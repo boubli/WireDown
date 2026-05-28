@@ -551,9 +551,7 @@ void setup() {
     Serial.begin(115200);
     delay(1000);
 
-    Serial.println("╔══════════════════════════════════════╗");
-    Serial.println("║   WireDown  —  ESP32 Honeypot Sensor ║");
-    Serial.println("╚══════════════════════════════════════╝");
+    Serial.println("WireDown — ESP32 Honeypot Sensor starting...");
 
     setupWiFi();
     connectWebSocket();

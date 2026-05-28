@@ -24,7 +24,7 @@ from typing import Callable, Optional
 
 log = logging.getLogger("wiredown.fake_ssh")
 
-# ── Dynamic Honeypot Filesystem ───────────────────────────────────
+# Dynamic Honeypot Filesystem
 
 import pathlib
 
@@ -138,7 +138,7 @@ def _init_fs():
 # Initialize on module load
 _init_fs()
 
-# ── SSH Protocol Constants ────────────────────────────────────────
+# SSH Protocol Constants
 
 SSH_BANNER = b"SSH-2.0-OpenSSH_9.7p1 Ubuntu-6ubuntu0.1\r\n"
 SSH_MSG_KEXINIT = 20
@@ -304,7 +304,7 @@ class FakeSSHServer:
         self._thread: Optional[threading.Thread] = None
         self._running = False
 
-    # ── Public API ────────────────────────────────────────────────
+    # Public API
 
     def start(self) -> None:
         """Start the SSH honeypot in a background thread."""
@@ -334,7 +334,7 @@ class FakeSSHServer:
             historical = [s.to_dict() for s in self._sessions.values() if not s.active]
         return {"active": active, "historical": historical}
 
-    # ── Event Loop ────────────────────────────────────────────────
+    # Event Loop
 
     def _run_loop(self) -> None:
         self._loop = asyncio.new_event_loop()
@@ -354,7 +354,7 @@ class FakeSSHServer:
         addrs = ", ".join(str(s.getsockname()) for s in self._server.sockets)
         log.info("FakeSSH listening on %s", addrs)
 
-    # ── Client Handler ────────────────────────────────────────────
+    # Client Handler
 
     async def _handle_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
@@ -379,7 +379,7 @@ class FakeSSHServer:
         log.info("SSH connection from %s:%d [%s]", client_ip, client_port, session_id)
 
         try:
-            # ── Phase 1: SSH banner exchange ──
+            # Phase 1: SSH banner exchange
             writer.write(SSH_BANNER)
             await writer.drain()
 
@@ -391,7 +391,7 @@ class FakeSSHServer:
                 log.warning("Client %s timed out during banner exchange", client_ip)
                 return
 
-            # ── Phase 2: Key exchange init ──
+            # Phase 2: Key exchange init
             kexinit_payload = _build_kexinit_payload()
             kexinit_packet = _build_ssh_packet(kexinit_payload)
             writer.write(kexinit_packet)
@@ -411,7 +411,7 @@ class FakeSSHServer:
                 log.warning("Client %s timed out during kex", client_ip)
                 return
 
-            # ── Phase 3: Transition to plain-text interactive mode ──
+            # Phase 3: Transition to plain-text interactive mode
             # In a real scenario, encryption would be negotiated.
             # We skip that and switch to plain-text for interaction capture.
 
@@ -435,7 +435,7 @@ class FakeSSHServer:
                 "Last login: "
             ).encode("utf-8") + datetime.now(timezone.utc).strftime("%a %b %d %H:%M:%S %Y").encode("utf-8") + b" from 192.168.1.105\r\n"
 
-            # ── Phase 4: Authentication (plain-text capture) ──
+            # Phase 4: Authentication (plain-text capture)
             writer.write(b"login: ")
             await writer.drain()
 
@@ -479,7 +479,7 @@ class FakeSSHServer:
             writer.write(welcome_msg)
             await writer.drain()
 
-            # ── Phase 5: Interactive shell ──
+            # Phase 5: Interactive shell
             await self._interactive_shell(reader, writer, session)
 
         except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
@@ -503,7 +503,7 @@ class FakeSSHServer:
             except Exception:
                 pass
 
-    # ── Interactive Shell ─────────────────────────────────────────
+    # Interactive Shell
 
     async def _interactive_shell(
         self,
@@ -562,11 +562,11 @@ class FakeSSHServer:
         cmd_parts = cmd.strip().split()
         base_cmd = cmd_parts[0].lower() if cmd_parts else ""
 
-        # ── Exit commands ──
+        # Exit commands
         if cmd_lower in ("exit", "quit", "logout"):
             return ""
 
-        # ── ls ──
+        # ls
         if base_cmd == "ls":
             import pathlib, time, stat
             FS_DIR = pathlib.Path(__file__).parent / "honeypot_fs"
@@ -605,7 +605,7 @@ class FakeSSHServer:
                 return f"total 48\n" + "\n".join(entries)
             return "  ".join(entries)
 
-        # ── cat ──
+        # cat
         if base_cmd == "cat":
             import pathlib
             FS_DIR = pathlib.Path(__file__).parent / "honeypot_fs"
@@ -643,19 +643,19 @@ class FakeSSHServer:
             except Exception as e:
                 return f"cat: {target}: No such file or directory"
 
-        # ── whoami ──
+        # whoami
         if cmd_lower == "whoami":
             return username
 
-        # ── pwd ──
+        # pwd
         if cmd_lower == "pwd":
             return f"/home/{username}"
 
-        # ── id ──
+        # id
         if cmd_lower == "id":
             return f"uid=1000({username}) gid=1000({username}) groups=1000({username}),27(sudo)"
 
-        # ── uname ──
+        # uname
         if base_cmd == "uname":
             if "-a" in cmd_lower:
                 return "Linux honeypot 6.5.0-44-generic #44~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue Jun 18 14:36:16 UTC 2 x86_64 x86_64 x86_64 GNU/Linux"
@@ -665,13 +665,13 @@ class FakeSSHServer:
                 return "honeypot"
             return "Linux"
 
-        # ── hostname ──
+        # hostname
         if cmd_lower == "hostname":
             return "honeypot"
         if cmd_lower == "hostname -I" or cmd_lower == "hostname -i":
             return "10.0.0.50 fd00::50"
 
-        # ── dpkg -l | grep xz  (THE BAIT!) ──
+        # dpkg -l | grep xz  (THE BAIT!)
         if "dpkg" in cmd_lower and "xz" in cmd_lower:
             self.on_xz_probe(session.client_ip, {
                 "command": cmd,
@@ -684,7 +684,7 @@ class FakeSSHServer:
                 "ii  xz-utils          5.6.1-1    amd64    XZ-format compression utilities"
             )
 
-        # ── dpkg -l | grep ssh ──
+        # dpkg -l | grep ssh
         if "dpkg" in cmd_lower and "ssh" in cmd_lower:
             return (
                 "ii  openssh-client    1:9.7p1-6ubuntu0.1    amd64    secure shell (SSH) client\n"
@@ -692,11 +692,11 @@ class FakeSSHServer:
                 "ii  openssh-sftp-server 1:9.7p1-6ubuntu0.1  amd64    secure shell (SSH) sftp server module"
             )
 
-        # ── dpkg (general) ──
+        # dpkg (general)
         if base_cmd == "dpkg":
             return "dpkg-query: no packages found matching *"
 
-        # ── xz --version (also bait) ──
+        # xz --version (also bait)
         if cmd_lower == "xz --version" or cmd_lower == "xz -V":
             self.on_xz_probe(session.client_ip, {
                 "command": cmd,
@@ -709,7 +709,7 @@ class FakeSSHServer:
                 "liblzma 5.6.1"
             )
 
-        # ── ldd (xz probe) ──
+        # ldd (xz probe)
         if "ldd" in cmd_lower and ("sshd" in cmd_lower or "liblzma" in cmd_lower):
             self.on_xz_probe(session.client_ip, {
                 "command": cmd,
@@ -727,7 +727,7 @@ class FakeSSHServer:
                 "\t/lib64/ld-linux-x86-64.so.2 (0x00007f1234800000)"
             )
 
-        # ── strings (xz probe) ──
+        # strings (xz probe)
         if "strings" in cmd_lower and "liblzma" in cmd_lower:
             self.on_xz_probe(session.client_ip, {
                 "command": cmd,
@@ -745,7 +745,7 @@ class FakeSSHServer:
                 "is_arch_extension_supported"
             )
 
-        # ── env / printenv (NOTIFY_SOCKET probe) ──
+        # env / printenv (NOTIFY_SOCKET probe)
         if cmd_lower.startswith("echo $notify_socket") or cmd_lower.startswith("echo $NOTIFY_SOCKET"):
             self.on_xz_probe(session.client_ip, {
                 "command": cmd,
@@ -779,7 +779,7 @@ class FakeSSHServer:
                 "NOTIFY_SOCKET=/run/systemd/notify"
             )
 
-        # ── wget / curl (trap) ──
+        # wget / curl (trap)
         if base_cmd == "wget":
             target_url = cmd_parts[1] if len(cmd_parts) > 1 else "http://example.com"
             host = target_url.replace("http://", "").replace("https://", "").split("/")[0]
@@ -794,11 +794,11 @@ class FakeSSHServer:
             host = target_url.replace("http://", "").replace("https://", "").split("/")[0]
             return f"curl: (6) Could not resolve host: {host}"
 
-        # ── sudo ──
+        # sudo
         if base_cmd == "sudo":
             return f"[sudo] password for {username}: \n{username} is not in the sudoers file. This incident will be reported."
 
-        # ── w / who ──
+        # w / who
         if cmd_lower == "w":
             now_str = datetime.now(timezone.utc).strftime("%H:%M:%S")
             return (
@@ -811,12 +811,12 @@ class FakeSSHServer:
             now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
             return f"{username}   pts/0        {now_str} ({session.client_ip})"
 
-        # ── uptime ──
+        # uptime
         if cmd_lower == "uptime":
             now_str = datetime.now(timezone.utc).strftime("%H:%M:%S")
             return f" {now_str} up 47 days, 12:33,  1 user,  load average: 0.23, 0.18, 0.15"
 
-        # ── ifconfig / ip addr ──
+        # ifconfig / ip addr
         if cmd_lower == "ifconfig" or cmd_lower == "ip addr" or cmd_lower == "ip a":
             return (
                 "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000\n"
@@ -830,7 +830,7 @@ class FakeSSHServer:
                 "    inet6 fe80::42:acff:fe11:2/64 scope link"
             )
 
-        # ── netstat / ss ──
+        # netstat / ss
         if base_cmd == "netstat" or base_cmd == "ss":
             return (
                 "Netid  State      Recv-Q  Send-Q    Local Address:Port     Peer Address:Port\n"
@@ -842,7 +842,7 @@ class FakeSSHServer:
                 f"tcp    ESTAB      0       0         10.0.0.50:22           {session.client_ip}:{session.client_port}"
             )
 
-        # ── ps ──
+        # ps
         if base_cmd == "ps":
             return (
                 "  PID TTY          TIME CMD\n"
@@ -855,7 +855,7 @@ class FakeSSHServer:
                 f" 1338 pts/0    00:00:00 ps"
             )
 
-        # ── history ──
+        # history
         if cmd_lower == "history":
             return (
                 "    1  apt update && apt upgrade -y\n"
@@ -870,11 +870,11 @@ class FakeSSHServer:
                 "   10  history"
             )
 
-        # ── cd ──
+        # cd
         if base_cmd == "cd":
             return ""
 
-        # ── echo ──
+        # echo
         if base_cmd == "echo":
             arg = cmd[5:].strip() if len(cmd) > 5 else ""
             if arg.startswith("$"):
@@ -893,11 +893,11 @@ class FakeSSHServer:
                 return env_map.get(var, "")
             return arg.strip("'\"")
 
-        # ── date ──
+        # date
         if cmd_lower == "date":
             return datetime.now(timezone.utc).strftime("%a %b %d %H:%M:%S UTC %Y")
 
-        # ── df ──
+        # df
         if base_cmd == "df":
             return (
                 "Filesystem     1K-blocks     Used Available Use% Mounted on\n"
@@ -907,7 +907,7 @@ class FakeSSHServer:
                 "tmpfs             204800     1024    203776   1% /run"
             )
 
-        # ── free ──
+        # free
         if base_cmd == "free":
             return (
                 "               total        used        free      shared  buff/cache   available\n"
@@ -915,7 +915,7 @@ class FakeSSHServer:
                 "Swap:         524288           0      524288"
             )
 
-        # ── systemctl ──
+        # systemctl
         if base_cmd == "systemctl":
             if "status" in cmd_lower and "ssh" in cmd_lower:
                 return (
@@ -931,7 +931,7 @@ class FakeSSHServer:
                 )
             return f"Unit {cmd_parts[-1] if len(cmd_parts) > 1 else 'unknown'}.service could not be found."
 
-        # ── which / type ──
+        # which / type
         if base_cmd in ("which", "type"):
             known = {
                 "bash": "/usr/bin/bash", "ls": "/usr/bin/ls", "cat": "/usr/bin/cat",
@@ -944,18 +944,18 @@ class FakeSSHServer:
                 return known[target]
             return f"{target} not found"
 
-        # ── touch / mkdir ──
+        # touch / mkdir
         if base_cmd in ("touch", "mkdir"):
             return ""
 
-        # ── rm ──
+        # rm
         if base_cmd == "rm":
             return ""
 
-        # ── Default: command not found ──
+        # Default: command not found
         return f"bash: {cmd_parts[0]}: command not found"
 
-    # ── Helpers ───────────────────────────────────────────────────
+    # Helpers
 
     def _emit_event(self, event: dict) -> None:
         """Thread-safe event emission."""

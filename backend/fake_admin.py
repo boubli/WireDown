@@ -27,13 +27,13 @@ from flask import (
 
 log = logging.getLogger("wiredown.fake_admin")
 
-# ── Module-level state (populated by register_admin_panel) ────────
+# Module-level state (populated by register_admin_panel)
 _captured_credentials: list[dict] = []
 _access_log: list[dict] = []
 _on_credential_captured: Optional[Callable] = None
 _on_page_access: Optional[Callable] = None
 
-# ── Blueprint Definition ─────────────────────────────────────────
+# Blueprint Definition
 
 fake_admin = Blueprint(
     "fake_admin",
@@ -41,7 +41,7 @@ fake_admin = Blueprint(
     template_folder="templates",
 )
 
-# ── Fake device data ─────────────────────────────────────────────
+# Fake device data
 
 FAKE_DEVICES = [
     {
@@ -165,7 +165,7 @@ FAKE_ROUTER_CONFIG = {
 }
 
 
-# ── Helpers ───────────────────────────────────────────────────────
+# Helpers
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -191,7 +191,7 @@ def _log_access(path: str) -> None:
             log.error("Error in on_page_access callback: %s", exc)
 
 
-# ── Routes ────────────────────────────────────────────────────────
+# Routes
 
 @fake_admin.route("/admin")
 def admin_login_page():
@@ -319,7 +319,7 @@ def admin_logout():
     return redirect(url_for("fake_admin.admin_login_page"))
 
 
-# ── Public API ────────────────────────────────────────────────────
+# Public API
 
 def get_captured_credentials() -> list[dict]:
     """Return all captured credentials."""

@@ -1,9 +1,5 @@
-"""
-╔══════════════════════════════════════════════════════════════╗
-║  WireDown — Backend Hub                                      ║
-║  Flask + Flask-SocketIO  ·  ESP32 relay  ·  Frontend bridge  ║
-╚══════════════════════════════════════════════════════════════╝
-"""
+# backend hub for WireDown
+# glues the ESP32 to the frontend and runs the security modules.
 
 import os
 import json
@@ -24,7 +20,7 @@ from fake_ssh import FakeSSHServer
 from xz_backdoor_detector import XZBackdoorDetector
 from fake_admin import register_admin_panel
 
-# ── App Setup ──────────────────────────────────────────────────────
+# App Setup
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.urandom(32).hex()
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -46,7 +42,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("wiredown")
 
-# ── In-Memory State ───────────────────────────────────────────────
+# In-Memory State
 esp32_sid = None                          # Socket.IO session id of the ESP32
 devices: OrderedDict[str, dict] = OrderedDict()   # mac → device info
 isolation_log: list[dict] = []            # audit trail
@@ -57,7 +53,7 @@ stats = {
     "uptime_start": time.time(),
 }
 
-# ── Security Modules ───────────────────────────────────────────────
+# Security Modules
 
 threat_engine = ThreatEngine()
 bandwidth_throttle = BandwidthThrottle()
@@ -103,7 +99,7 @@ register_admin_panel(
     on_credential_captured=lambda ip, user, pw, ua: on_threat_signal(ip, "admin_login_attempt", {"user": user, "password": pw})
 )
 
-# ── Helpers ────────────────────────────────────────────────────────
+# Helpers
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -130,7 +126,7 @@ def register_device(mac: str, rssi: int = 0, channel: int = 0) -> dict:
     return devices[mac]
 
 
-# ── HTTP Routes ────────────────────────────────────────────────────
+# HTTP Routes
 
 @app.route("/")
 def index():
@@ -174,7 +170,7 @@ def api_isolation_log():
     return jsonify(isolation_log[-100:])
 
 
-# ── WebSocket: ESP32 Channel ──────────────────────────────────────
+# WebSocket: ESP32 Channel
 
 @socketio.on("connect", namespace="/ws/esp32")
 def esp32_connect():
@@ -236,7 +232,7 @@ def esp32_message(raw):
         log.warning("Unknown ESP32 message type: %s", msg_type)
 
 
-# ── WebSocket: Frontend Channel ───────────────────────────────────
+# WebSocket: Frontend Channel
 
 @socketio.on("connect", namespace="/ws/frontend")
 def frontend_connect():
@@ -331,7 +327,7 @@ def frontend_simulate_device(data):
     log.info("Simulated device spawned: %s", mac)
 
 
-# ── Entry Point ────────────────────────────────────────────────────
+# Entry Point
 
 if __name__ == "__main__":
     log.info("╔══════════════════════════════════════╗")

@@ -1,19 +1,12 @@
 """
-╔══════════════════════════════════════════════════════════════╗
-║  WireDown — CVE-2024-3094 XZ Utils Backdoor Detector         ║
-║  Behavioral · Timing · Cryptographic analysis                ║
-╚══════════════════════════════════════════════════════════════╝
-
-Hooks into the FakeSSH server to detect indicators of the XZ Utils
-backdoor exploit (CVE-2024-3094). Analyzes SSH handshake data, pre-auth
-timing patterns, and post-auth command behavior to identify threat
-actors actively probing for or exploiting the vulnerability.
-
-Detection layers:
-  1. SSH handshake algorithm analysis (cert-based RSA paths)
-  2. RSA modulus entropy anomaly detection
-  3. Pre-auth timing correlation (Ed448 verification overhead)
-  4. Post-auth behavioral command fingerprinting
+# xz backdoor detector (CVE-2024-3094)
+# Hooks into FakeSSH to catch XZ exploit probes.
+#
+# Checks:
+# 1. RSA cert algorithms
+# 2. RSA modulus entropy (payloads look weird)
+# 3. Timing (Ed448 takes time)
+# 4. Command history
 """
 
 import logging
@@ -26,13 +19,13 @@ from typing import Callable, Optional
 
 log = logging.getLogger("wiredown.xz_detector")
 
-# ── Severity levels ───────────────────────────────────────────────
-SEVERITY_LOW = "low"            # Reconnaissance
-SEVERITY_MEDIUM = "medium"      # Likely probing
-SEVERITY_HIGH = "high"          # Active exploit attempt
-SEVERITY_CRITICAL = "critical"  # Confirmed exploit payload
+# Severity levels (TODO: Maybe just use an enum instead of strings?)
+SEVERITY_LOW = "low"
+SEVERITY_MEDIUM = "medium"
+SEVERITY_HIGH = "high"
+SEVERITY_CRITICAL = "critical"
 
-# ── CVE-2024-3094 Indicator Types ─────────────────────────────────
+# Indicator Types
 INDICATOR_CERT_KEX = "cert_based_kex_algorithm"
 INDICATOR_RSA_MODULUS_SIZE = "oversized_rsa_modulus"
 INDICATOR_RSA_ENTROPY_ANOMALY = "rsa_modulus_entropy_anomaly"
@@ -45,7 +38,7 @@ INDICATOR_LIBLZMA_STRINGS = "liblzma_strings_analysis"
 INDICATOR_LIBLZMA_ACCESS = "liblzma_direct_access"
 INDICATOR_COMBINED_RECON = "combined_reconnaissance_pattern"
 
-# ── Commands that indicate CVE-2024-3094 probing ──────────────────
+# Probing commands
 XZ_RECON_COMMANDS = {
     "ldd /usr/sbin/sshd": INDICATOR_SSHD_LDD,
     "ldd $(which sshd)": INDICATOR_SSHD_LDD,
@@ -74,13 +67,13 @@ XZ_RECON_COMMANDS = {
     "readelf -a /usr/lib/liblzma.so.5": INDICATOR_LIBLZMA_ACCESS,
 }
 
-# Algorithms specifically associated with the XZ backdoor attack path
+# Backdoor specific kex algos
 BACKDOOR_KEX_INDICATORS = [
     "rsa-sha2-512-cert-v01@openssh.com",
     "rsa-sha2-256-cert-v01@openssh.com",
 ]
 
-# Pre-auth timing thresholds (milliseconds)
+# Timing limits (ms)
 BASELINE_HANDSHAKE_MS = 50.0
 TIMING_ANOMALY_MIN_MS = 10.0
 TIMING_ANOMALY_MAX_MS = 50.0
@@ -119,20 +112,7 @@ class Indicator:
 
 class XZBackdoorDetector:
     """
-    CVE-2024-3094 XZ Utils backdoor exploit detector.
-
-    Monitors SSH honeypot traffic for indicators of the XZ backdoor
-    attack, including handshake analysis, timing correlation, and
-    post-auth behavioral fingerprinting.
-
-    Parameters
-    ----------
-    on_exploit_detected : callable
-        Callback ``on_exploit_detected(client_ip, indicator_type, details, severity)``
-        invoked for every detected indicator.
-    timing_baseline_ms : float
-        Baseline handshake duration in milliseconds. Deviations above
-        this baseline within the anomaly range trigger timing alerts.
+    XZ Utils backdoor detector.
     """
 
     def __init__(
@@ -148,28 +128,15 @@ class XZBackdoorDetector:
         self._command_history: dict[str, list[str]] = defaultdict(list)
         self._timing_samples: dict[str, list[float]] = defaultdict(list)
 
-    # ── SSH Handshake Analysis ────────────────────────────────────
-
     def analyze_ssh_handshake(
         self,
         client_ip: str,
         banner_data: str,
         key_exchange_data: bytes,
     ) -> list[Indicator]:
-        """
-        Analyze an SSH handshake for CVE-2024-3094 indicators.
-
-        Checks:
-          1. Client-offered algorithms for cert-based RSA paths
-             used by the backdoor.
-          2. RSA public key modulus size (>= 4096 bits unusual structure).
-          3. Entropy anomalies in the RSA modulus upper bytes.
-
-        Returns a list of Indicator objects found.
-        """
         found: list[Indicator] = []
 
-        # ── Check 1: Cert-based key exchange algorithms ──
+        # Check kex algos
         try:
             kex_str = key_exchange_data.decode("utf-8", errors="replace")
         except Exception:
@@ -195,13 +162,12 @@ class XZBackdoorDetector:
                     client_ip, algo,
                 )
 
-        # ── Check 2: RSA modulus size analysis ──
+        # Check RSA size
         rsa_modulus_bytes = self._extract_rsa_modulus(key_exchange_data)
         if rsa_modulus_bytes:
             modulus_bits = len(rsa_modulus_bytes) * 8
             if modulus_bits >= 4096:
-                # Check for unusual structure: the backdoor embeds a payload
-                # in the upper bytes of an oversized RSA modulus
+                # XZ payload hides in the upper bytes of oversized RSA modulus
                 has_structure = self._check_modulus_structure(rsa_modulus_bytes)
                 severity = SEVERITY_HIGH if has_structure else SEVERITY_MEDIUM
 
@@ -226,7 +192,7 @@ class XZBackdoorDetector:
                     client_ip, modulus_bits, has_structure,
                 )
 
-            # ── Check 3: Entropy anomaly in upper bytes ──
+            # Check entropy
             entropy_result = self._analyze_modulus_entropy(rsa_modulus_bytes)
             if entropy_result["anomalous"]:
                 indicator = Indicator(
@@ -265,23 +231,12 @@ class XZBackdoorDetector:
 
         return found
 
-    # ── Pre-Auth Timing Analysis ──────────────────────────────────
-
     def analyze_pre_auth_timing(
         self,
         client_ip: str,
         handshake_duration_ms: float,
     ) -> Optional[Indicator]:
-        """
-        Analyze pre-authentication handshake timing for CVE-2024-3094.
-
-        The XZ backdoor's Ed448 signature verification adds 10-50ms
-        of measurable latency to the pre-auth SSH handshake. This
-        method tracks timing samples per client and flags anomalous
-        deviations from the baseline.
-
-        Returns an Indicator if timing anomaly is detected, else None.
-        """
+        # Ed448 signature verification adds ~10-50ms latency.
         with self._lock:
             self._timing_samples[client_ip].append(handshake_duration_ms)
 
@@ -298,8 +253,7 @@ class XZBackdoorDetector:
                 for s in samples
             )
 
-            # Severity increases if the timing anomaly is consistent across
-            # multiple connections from the same IP
+            # Flag if consistent across samples
             if len(samples) >= 3 and consistent:
                 severity = SEVERITY_HIGH
             elif len(samples) >= 2:
@@ -340,25 +294,12 @@ class XZBackdoorDetector:
 
         return None
 
-    # ── Post-Auth Behavioral Analysis ─────────────────────────────
-
     def analyze_post_auth_behavior(
         self,
         client_ip: str,
         commands: list[str],
     ) -> list[Indicator]:
-        """
-        Analyze post-authentication commands for CVE-2024-3094 indicators.
-
-        Checks for commands that:
-          - Inspect liblzma linkage (ldd /usr/sbin/sshd)
-          - Extract strings from liblzma
-          - Check xz-utils version
-          - Probe NOTIFY_SOCKET (systemd integration the backdoor requires)
-          - Directly access liblzma shared object files
-
-        Returns a list of Indicator objects found.
-        """
+        # Tracking command history to catch recon patterns.
         found: list[Indicator] = []
 
         with self._lock:
@@ -422,8 +363,8 @@ class XZBackdoorDetector:
                     client_ip, cmd_stripped, matched_type, severity,
                 )
 
-        # ── Check for combined reconnaissance pattern ──
-        # If a single IP checks multiple facets of the backdoor, escalate
+        # Check for multiple facets
+        # Escalating if IP checks multiple things
         if found:
             unique_types = set()
             with self._lock:
@@ -470,7 +411,7 @@ class XZBackdoorDetector:
 
         return found
 
-    # ── Indicator Retrieval ───────────────────────────────────────
+    # Indicator Retrieval
 
     def get_indicators(self, client_ip: Optional[str] = None) -> list[dict]:
         """
@@ -545,8 +486,6 @@ class XZBackdoorDetector:
             ips = list(self._indicators.keys())
         return {ip: self.get_client_risk_score(ip) for ip in ips}
 
-    # ── Shannon Entropy Calculator ────────────────────────────────
-
     @staticmethod
     def shannon_entropy(data: bytes) -> float:
         """
@@ -582,21 +521,11 @@ class XZBackdoorDetector:
 
         return entropy
 
-    # ── Internal Helpers ──────────────────────────────────────────
-
     def _extract_rsa_modulus(self, key_exchange_data: bytes) -> Optional[bytes]:
-        """
-        Attempt to extract an RSA modulus from SSH key exchange data.
-
-        Looks for the SSH public key format:
-          [4-byte length]["ssh-rsa"][4-byte e-length][e][4-byte n-length][n]
-
-        Returns the modulus bytes if found, else None.
-        """
+        # Trying to pull the RSA modulus. If it fails, whatever.
         if not key_exchange_data or len(key_exchange_data) < 20:
             return None
 
-        # Search for 'ssh-rsa' marker in the data
         marker = b"ssh-rsa"
         pos = key_exchange_data.find(marker)
         if pos < 0:
@@ -633,30 +562,17 @@ class XZBackdoorDetector:
             return None
 
     def _check_modulus_structure(self, modulus: bytes) -> bool:
-        """
-        Check if an RSA modulus has structural anomalies suggesting
-        an embedded payload (as in CVE-2024-3094).
-
-        The backdoor embeds an Ed448-signed command in specific byte
-        positions of the RSA modulus. This creates detectable patterns:
-          - Repeated byte values in the upper 32 bytes
-          - Low entropy sections interspersed with high entropy
-          - Magic byte patterns at specific offsets
-
-        Returns True if suspicious structure is detected.
-        """
+        # Looking for Ed448 embedded signs. The padding causes weird patterns.
         if len(modulus) < 512:
             return False
 
-        # Check 1: Look for low-entropy regions in the upper quarter
-        # (legitimate RSA keys are uniformly random throughout)
+        # Upper quarter low entropy check
         upper_quarter = modulus[:len(modulus) // 4]
         upper_entropy = self.shannon_entropy(upper_quarter)
         if upper_entropy < 7.0:
             return True
 
-        # Check 2: Look for repeated 4-byte patterns in upper bytes
-        # (payload structure creates alignment patterns)
+        # Repeated 4-byte patterns
         chunk_size = 4
         upper_32 = modulus[:32]
         chunks = [upper_32[i:i + chunk_size] for i in range(0, len(upper_32), chunk_size)]
@@ -664,7 +580,7 @@ class XZBackdoorDetector:
         if len(unique_chunks) < len(chunks) * 0.6:
             return True
 
-        # Check 3: Check for zero-byte runs (padding around payload)
+        # Zero-byte padding runs
         zero_runs = 0
         current_run = 0
         for byte in modulus[:128]:
@@ -677,8 +593,7 @@ class XZBackdoorDetector:
         if zero_runs >= 2:
             return True
 
-        # Check 4: Entropy variance across 64-byte blocks
-        # Real RSA keys have consistent entropy; backdoor has variance
+        # Entropy variance (real keys don't vary this much)
         block_size = 64
         entropies = []
         for i in range(0, min(len(modulus), 512), block_size):
@@ -695,17 +610,6 @@ class XZBackdoorDetector:
         return False
 
     def _analyze_modulus_entropy(self, modulus: bytes) -> dict:
-        """
-        Perform detailed entropy analysis of an RSA modulus.
-
-        Compares entropy of upper and lower halves. CVE-2024-3094
-        payloads create measurable entropy differences between the
-        sections of the modulus where the payload is embedded vs.
-        the legitimately random portions.
-
-        Returns a dict with entropy values and whether an anomaly
-        was detected.
-        """
         overall = self.shannon_entropy(modulus)
         mid = len(modulus) // 2
         quarter = len(modulus) // 4
@@ -720,13 +624,9 @@ class XZBackdoorDetector:
         upper_half_entropy = self.shannon_entropy(upper_half)
         lower_half_entropy = self.shannon_entropy(lower_half)
 
-        # Legitimate RSA keys: all sections ≈ 7.99 bits/byte
-        # Backdoor payload: upper section entropy drops noticeably
         deviation = abs(upper_entropy - lower_entropy)
         half_deviation = abs(upper_half_entropy - lower_half_entropy)
 
-        # Flag if entropy deviation exceeds threshold
-        # or if any section drops below expected randomness
         anomalous = (
             deviation > 0.3 or
             half_deviation > 0.2 or
@@ -751,15 +651,6 @@ class XZBackdoorDetector:
         client_ip: str,
         command_history: list[str],
     ) -> str:
-        """
-        Determine severity based on indicator type and accumulated behavior.
-
-        Escalation rules:
-          - First suspicious command from an IP → low
-          - Multiple suspicious commands → medium
-          - Direct liblzma access or strings analysis → high
-          - Combined with handshake/timing anomalies → critical
-        """
         with self._lock:
             existing = self._indicators.get(client_ip, [])
             existing_types = {ind.indicator_type for ind in existing}
