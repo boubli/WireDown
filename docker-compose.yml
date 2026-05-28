@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: wiredown-backend
+    ports:
+      - "5000:5000"
+      - "2222:2222"
+      - "5353:5353/udp"
+    restart: unless-stopped
+    networks:
+      - wiredown-net
+
+  frontend:
+    image: nginx:alpine
+    container_name: wiredown-frontend
+    ports:
+      - "8080:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    networks:
+      - wiredown-net
+
+networks:
+  wiredown-net:
+    driver: bridge

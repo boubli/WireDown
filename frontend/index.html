@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="description" content="WireDown — Autonomous AI-Driven Honeypot with Zero-Gravity Physics Dashboard"/>
+<title>WireDown — Zero-Gravity Honeypot</title>
+<link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- Matter.js physics canvas -->
+<div id="physics-canvas"></div>
+
+<!-- ── HUD Overlay ─────────────────────────────────────────── -->
+<div class="hud">
+
+  <!-- Top Bar -->
+  <div class="top-bar">
+    <div class="logo">
+      <div class="logo-icon"></div>
+      <span class="logo-text">WireDown</span>
+    </div>
+    <div class="status-group">
+      <div class="status-badge" id="espStatus">
+        <span class="status-dot offline" id="espDot"></span>
+        ESP32: <span id="espLabel">Offline</span>
+      </div>
+      <div class="status-badge">
+        <span class="status-dot online"></span>
+        AI Agent: Active
+      </div>
+      <div class="status-badge" id="sshStatus">
+        <span class="status-dot online" id="sshDot"></span>
+        SSH Trap: <span id="sshLabel">Listening</span>
+      </div>
+      <div class="status-badge" id="dnsStatus">
+        <span class="status-dot online" id="dnsDot"></span>
+        DNS Sinkhole: <span id="dnsLabel">Active</span>
+      </div>
+      <div class="status-badge" id="clockBadge">
+        <span id="liveClock">00:00:00</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Side Panel with Tabs -->
+  <div class="side-panel">
+
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="tab-overview">Overview</button>
+      <button class="tab-btn" data-tab="tab-attacks">Attacks</button>
+      <button class="tab-btn" data-tab="tab-traps">Traps</button>
+      <button class="tab-btn" data-tab="tab-log">Log</button>
+    </div>
+
+    <!-- TAB: Overview -->
+    <div class="tab-content active" id="tab-overview">
+
+      <!-- Stats Card -->
+      <div class="panel-card">
+        <div class="panel-title">System Metrics</div>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-value cyan" id="statDevices">0</div>
+            <div class="stat-label">Devices</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value magenta" id="statThreats">0</div>
+            <div class="stat-label">Threats</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value red" id="statIsolated">0</div>
+            <div class="stat-label">Isolated</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value green" id="statSafe">0</div>
+            <div class="stat-label">Safe</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value amber" id="statSuspicious">0</div>
+            <div class="stat-label">Suspicious</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value blue" id="statThrottled">0</div>
+            <div class="stat-label">Throttled</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Device List -->
+      <div class="panel-card">
+        <div class="panel-title">Network Devices</div>
+        <div class="device-list" id="deviceList">
+          <div style="color: var(--text-muted); font-size: 0.7rem; text-align: center; padding: 20px 0;">
+            Waiting for devices...
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Attacks -->
+    <div class="tab-content" id="tab-attacks">
+
+      <!-- Attack Feed -->
+      <div class="panel-card">
+        <div class="panel-title">Live Attack Feed</div>
+        <div class="attack-feed" id="attackFeed">
+          <div class="attack-empty">No attacks detected yet</div>
+        </div>
+      </div>
+
+      <!-- Threat Scores -->
+      <div class="panel-card">
+        <div class="panel-title">Threat Scores</div>
+        <div class="threat-scores" id="threatScores">
+          <div style="color: var(--text-muted); font-size: 0.7rem; text-align: center; padding: 12px 0;">
+            No scored devices
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Traps -->
+    <div class="tab-content" id="tab-traps">
+
+      <!-- SSH Trap Log -->
+      <div class="panel-card">
+        <div class="panel-title">SSH Honeypot Sessions</div>
+        <div class="ssh-log" id="sshLog">
+          <div class="ssh-line info">Fake SSH listening on :2222</div>
+          <div class="ssh-line info">Banner: SSH-2.0-OpenSSH_9.7p1</div>
+          <div class="ssh-line info">XZ bait: xz-utils 5.6.1 (CVE-2024-3094)</div>
+        </div>
+      </div>
+
+      <!-- Admin Panel Trap -->
+      <div class="panel-card">
+        <div class="panel-title">Admin Panel Trap</div>
+        <div class="admin-log" id="adminLog">
+          <div class="ssh-line info">Fake admin panel at /admin</div>
+          <div class="ssh-line info">Brand: NetGate Pro R4500</div>
+        </div>
+      </div>
+
+      <!-- Active Responses -->
+      <div class="panel-card">
+        <div class="panel-title">Active Responses</div>
+        <div class="response-list" id="responseList">
+          <div style="color: var(--text-muted); font-size: 0.7rem; text-align: center; padding: 12px 0;">
+            No active responses
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Log -->
+    <div class="tab-content" id="tab-log">
+      <div class="panel-card">
+        <div class="panel-title">AI Event Log</div>
+        <div class="event-log" id="eventLog">
+          <div class="event-entry info">System initialized — AI Agent online</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Control Buttons -->
+  <div class="controls">
+    <button class="btn" id="btnSimulate" title="Spawn a simulated device">
+      ⊕ Spawn Device
+    </button>
+    <button class="btn danger" id="btnSpawnAttacker" title="Spawn a guaranteed attacker">
+      ⚠ Spawn Attacker
+    </button>
+    <button class="btn" id="btnSimulateSSH" title="Simulate an SSH login attempt">
+      💻 Sim SSH
+    </button>
+    <button class="btn danger" id="btnSimulateXZ" title="Simulate XZ backdoor exploit attempt">
+      ☠ Sim CVE-3094
+    </button>
+  </div>
+
+  <!-- Bottom Bar -->
+  <div class="bottom-bar">
+    <span>WireDown v2.0.0 · Nuclear Honeypot · Threat Engine Active</span>
+    <span id="fpsCounter">-- FPS</span>
+  </div>
+
+</div>
+
+<!-- Ambient particles -->
+<script>
+(function() {
+  const count = 15;
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement("div");
+    p.className = "ambient-particle";
+    p.style.left = Math.random() * 100 + "%";
+    p.style.top  = Math.random() * 100 + "%";
+    p.style.animationDelay    = (Math.random() * 20) + "s";
+    p.style.animationDuration = (15 + Math.random() * 15) + "s";
+    document.body.appendChild(p);
+  }
+})();
+</script>
+
+<!-- Tab switching logic -->
+<script>
+(function() {
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabContents = document.querySelectorAll('.tab-content');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      tabContents.forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+})();
+</script>
+
+<!-- Dependencies -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+<!-- App modules -->
+<script src="ai_agent.js"></script>
+<script src="physics_world.js"></script>
+
+</body>
+</html>
