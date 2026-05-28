@@ -12,7 +12,7 @@ echo -e "${CYAN}======================================================${NC}"
 echo ""
 
 if ! command -v pct &> /dev/null; then
-    echo -e "${YELLOW}Error: This script must be run directly on the Proxmox Node shell.${NC}"
+    echo -e "${YELLOW}Error: This script must be run directly on the Proxmox Node shell.${NC}" >&2
     exit 1
 fi
 
@@ -24,7 +24,7 @@ for ID in $(pct list | awk 'NR>1 {print $1}'); do
     
     # Ensure container is running before attempting to exec
     STATUS=$(pct status $ID | awk '{print $2}')
-    if [ "$STATUS" != "running" ]; then
+    if [[ "$STATUS" != "running" ]]; then
         continue
     fi
 
@@ -43,7 +43,7 @@ for ID in $(pct list | awk 'NR>1 {print $1}'); do
     fi
 done
 
-if [ $FOUND -eq 0 ]; then
+if [[ $FOUND -eq 0 ]]; then
     echo -e "\n${YELLOW}[!] No running WireDown LXC containers found on this Proxmox node.${NC}"
     echo -e "Make sure your container is powered on before running the updater."
 else

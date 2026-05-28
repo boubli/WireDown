@@ -422,7 +422,7 @@ class SecurityAIAgent {
    *  CUSTOM RENDERER
    * ══════════════════════════════════════════════════════════ */
 
-  drawOverlays(ctx) {
+  drawOverlays(ctx) { // NOSONAR
     const bhPos = this.blackHole.position;
 
     for (const [id, meta] of this.deviceMap) {

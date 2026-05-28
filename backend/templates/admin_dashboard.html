@@ -301,6 +301,7 @@
 
             <!-- Row 2: Network Interfaces -->
             <div class="grid-3">
+                {# nosonar: intentional honeypot network configuration — all IPs are fake bait #}
                 <!-- WAN -->
                 <div class="card">
                     <div class="card-header">
@@ -316,6 +317,7 @@
                     <div class="stat-row"><span class="stat-label">MAC</span><span class="stat-value mono">00:1A:2B:3C:4D:5E</span></div>
                 </div>
 
+                {# nosonar: intentional honeypot network configuration — all IPs are fake bait #}
                 <!-- LAN -->
                 <div class="card">
                     <div class="card-header">
@@ -480,6 +482,7 @@
         }
 
         /* ── Device Table ────────────────────────── */
+        /* nosonar: intentional honeypot network configuration — all IPs are fake bait */
         var devices = [
             { id: 1, hostname: 'DESKTOP-A1B2C3D', mac: 'A4:83:E7:2F:01:AA', ip: '10.0.0.101', type: 'Ethernet', status: 'online', rx: '1.2 GB', tx: '340 MB', last: '2 min ago' },
             { id: 2, hostname: 'iPhone-Sarah', mac: 'F0:18:98:4C:D2:BB', ip: '10.0.0.102', type: 'WiFi (5GHz)', status: 'online', rx: '890 MB', tx: '120 MB', last: 'Just now' },

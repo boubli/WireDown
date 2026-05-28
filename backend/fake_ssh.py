@@ -30,6 +30,7 @@ import pathlib
 
 FS_DIR = pathlib.Path(__file__).parent / "honeypot_fs"
 
+# nosonar: intentional honeypot bait credentials
 DEFAULT_PASSWORDS = """\
 # Internal credentials — DO NOT SHARE
 # Last updated: 2024-05-14
@@ -42,6 +43,7 @@ jenkins:j3nk1ns_Ci
 deploy:d3pl0y_k3y_2024
 monitoring:m0n1t0r#99"""
 
+# nosonar: intentional honeypot bait environment file
 DEFAULT_ENV = """\
 # Application Environment Configuration
 # WARNING: Keep this file secure!
@@ -74,6 +76,7 @@ SMTP_PASSWORD=N0t1fy_Ml!2024
 JWT_SECRET=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.super_secret_signing_key
 ENCRYPTION_KEY=c2VjcmV0X2VuY3J5cHRpb25fa2V5XzIwMjQ="""
 
+# nosonar: intentional honeypot bait SSH key
 DEFAULT_RSA_KEY = """\
 -----BEGIN OPENSSH PRIVATE KEY-----
 b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAlwAAAAdzc2gtcn
@@ -92,6 +95,7 @@ p3VB7TZlD7N0P0ATnR5TzVGh7MGCV6CHqEuV0GKweRFEJYBf/JAAAAQEA8f2FIhIMGW/k
 QXQa5K8Rkf7P3MSuF1DhS3F9z/9wAAAA1kZXZAaG9uZXlwb3Q=
 -----END OPENSSH PRIVATE KEY-----"""
 
+# nosonar: intentional honeypot bait passwd file
 DEFAULT_PASSWD = """\
 root:x:0:0:root:/root:/bin/bash
 daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
@@ -556,7 +560,7 @@ class FakeSSHServer:
             writer.write(output.encode("utf-8") + b"\r\n")
             await writer.drain()
 
-    def _execute_command(self, cmd: str, username: str, session: FakeSSHSession) -> str:
+    def _execute_command(self, cmd: str, username: str, session: FakeSSHSession) -> str:  # nosonar: cognitive complexity — dispatch table is intentional
         """Process a command and return realistic output."""
         cmd_lower = cmd.strip().lower()
         cmd_parts = cmd.strip().split()
@@ -640,7 +644,7 @@ class FakeSSHServer:
                     return content.replace("{user}", username)
                 else:
                     return f"cat: {target}: No such file or directory"
-            except Exception as e:
+            except Exception:
                 return f"cat: {target}: No such file or directory"
 
         # whoami

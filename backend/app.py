@@ -20,6 +20,10 @@ from fake_ssh import FakeSSHServer
 from xz_backdoor_detector import XZBackdoorDetector
 from fake_admin import register_admin_panel
 
+# WebSocket namespace constants
+WS_NS_FRONTEND = "/ws/frontend"
+WS_NS_ESP32 = "/ws/esp32"
+
 # App Setup
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.urandom(32).hex()
@@ -79,7 +83,7 @@ def on_threat_signal(ip, signal_type, details):
         "details": details,
         "new_score": score,
         "status": status
-    }, namespace="/ws/frontend")
+    }, namespace=WS_NS_FRONTEND)
 
 dns_sinkhole = DNSSinkhole(
     on_tunnel_detected=lambda ip, domain, entropy: on_threat_signal(ip, "dns_tunnel", {"domain": domain, "entropy": entropy})
@@ -128,7 +132,7 @@ def register_device(mac: str, rssi: int = 0, channel: int = 0) -> dict:
 
 # HTTP Routes
 
-@app.route("/")
+@app.route("/", methods=["GET"])
 def index():
     return jsonify({
         "service": "WireDown Backend",
@@ -142,7 +146,7 @@ def index():
     })
 
 
-@app.route("/warning")
+@app.route("/warning", methods=["GET"])
 def warning_page():
     """Psychological deterrence page served to trapped devices."""
     ua = request.headers.get("User-Agent", "Unknown")
@@ -150,12 +154,12 @@ def warning_page():
     return render_template("warning.html", user_agent=ua, ip_address=ip)
 
 
-@app.route("/api/devices")
+@app.route("/api/devices", methods=["GET"])
 def api_devices():
     return jsonify(list(devices.values()))
 
 
-@app.route("/api/stats")
+@app.route("/api/stats", methods=["GET"])
 def api_stats():
     return jsonify({
         **stats,
@@ -165,33 +169,33 @@ def api_stats():
     })
 
 
-@app.route("/api/isolation-log")
+@app.route("/api/isolation-log", methods=["GET"])
 def api_isolation_log():
     return jsonify(isolation_log[-100:])
 
 
 # WebSocket: ESP32 Channel
 
-@socketio.on("connect", namespace="/ws/esp32")
+@socketio.on("connect", namespace=WS_NS_ESP32)
 def esp32_connect():
     global esp32_sid
     esp32_sid = request.sid
     stats["esp32_connected"] = True
     log.info("ESP32 sensor connected  (sid=%s)", request.sid)
     emit("ack", {"status": "connected", "ts": now_iso()})
-    socketio.emit("esp32_status", {"connected": True}, namespace="/ws/frontend")
+    socketio.emit("esp32_status", {"connected": True}, namespace=WS_NS_FRONTEND)
 
 
-@socketio.on("disconnect", namespace="/ws/esp32")
+@socketio.on("disconnect", namespace=WS_NS_ESP32)
 def esp32_disconnect():
     global esp32_sid
     esp32_sid = None
     stats["esp32_connected"] = False
     log.warning("ESP32 sensor disconnected")
-    socketio.emit("esp32_status", {"connected": False}, namespace="/ws/frontend")
+    socketio.emit("esp32_status", {"connected": False}, namespace=WS_NS_FRONTEND)
 
 
-@socketio.on("message", namespace="/ws/esp32")
+@socketio.on("message", namespace=WS_NS_ESP32)
 def esp32_message(raw):
     """Handle all JSON messages from ESP32."""
     try:
@@ -207,7 +211,7 @@ def esp32_message(raw):
         rssi = data.get("rssi", 0)
         channel = data.get("channel", 0)
         device = register_device(mac, rssi, channel)
-        socketio.emit("new_device", device, namespace="/ws/frontend")
+        socketio.emit("new_device", device, namespace=WS_NS_FRONTEND)
 
     elif msg_type == "esp32_hello":
         log.info("ESP32 hello: %s", data)
@@ -223,7 +227,7 @@ def esp32_message(raw):
             devices[mac]["status"] = "isolated"
         entry = {"mac": mac, "confirmed": True, "ts": now_iso(), "frames": data.get("frames", 0)}
         isolation_log.append(entry)
-        socketio.emit("isolation_confirmed", entry, namespace="/ws/frontend")
+        socketio.emit("isolation_confirmed", entry, namespace=WS_NS_FRONTEND)
 
     elif msg_type == "pong":
         pass
@@ -234,7 +238,7 @@ def esp32_message(raw):
 
 # WebSocket: Frontend Channel
 
-@socketio.on("connect", namespace="/ws/frontend")
+@socketio.on("connect", namespace=WS_NS_FRONTEND)
 def frontend_connect():
     log.info("Frontend client connected  (sid=%s)", request.sid)
     emit("init", {
@@ -248,12 +252,12 @@ def frontend_connect():
     })
 
 
-@socketio.on("disconnect", namespace="/ws/frontend")
+@socketio.on("disconnect", namespace=WS_NS_FRONTEND)
 def frontend_disconnect():
     log.info("Frontend client disconnected  (sid=%s)", request.sid)
 
 
-@socketio.on("execute_isolation", namespace="/ws/frontend")
+@socketio.on("execute_isolation", namespace=WS_NS_FRONTEND)
 def frontend_execute_isolation(data):
     """
     Receive an isolation command from the Frontend AI Agent
@@ -299,20 +303,20 @@ def frontend_execute_isolation(data):
         socketio.emit(
             "isolation_confirmed",
             {"mac": mac, "confirmed": False, "reason": "ESP32 offline", "ts": now_iso()},
-            namespace="/ws/frontend",
+            namespace=WS_NS_FRONTEND,
         )
 
 
-@socketio.on("flag_attacker", namespace="/ws/frontend")
+@socketio.on("flag_attacker", namespace=WS_NS_FRONTEND)
 def frontend_flag_attacker(data):
     mac = data.get("mac", "")
     if mac in devices:
         devices[mac]["is_attacker"] = True
         log.info("Device %s manually flagged as attacker", mac)
-        socketio.emit("device_flagged", devices[mac], namespace="/ws/frontend")
+        socketio.emit("device_flagged", devices[mac], namespace=WS_NS_FRONTEND)
 
 
-@socketio.on("simulate_device", namespace="/ws/frontend")
+@socketio.on("simulate_device", namespace=WS_NS_FRONTEND)
 def frontend_simulate_device(data):
     """Let the frontend spawn a fake device for testing."""
     import random
@@ -323,7 +327,7 @@ def frontend_simulate_device(data):
     rssi = data.get("rssi", random.randint(-80, -30))
     channel = data.get("channel", random.choice([1, 6, 11]))
     device = register_device(mac, rssi, channel)
-    socketio.emit("new_device", device, namespace="/ws/frontend")
+    socketio.emit("new_device", device, namespace=WS_NS_FRONTEND)
     log.info("Simulated device spawned: %s", mac)
 
 

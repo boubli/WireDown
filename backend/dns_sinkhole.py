@@ -302,7 +302,7 @@ class DNSSinkhole:
 
         # Parse question
         domain, offset = self._parse_domain_name(data, DNS_HEADER_LEN)
-        qtype, qclass = struct.unpack("!HH", data[offset:offset + 4])
+        qtype, _qclass = struct.unpack("!HH", data[offset:offset + 4])
 
         # Build and send response (only respond to A-record queries with an A answer)
         response = self._build_response(data, domain)

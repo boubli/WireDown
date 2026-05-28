@@ -12,7 +12,7 @@ echo -e "${CYAN}======================================================${NC}"
 echo ""
 
 if ! command -v pct &> /dev/null; then
-    echo -e "${YELLOW}Error: This script must be run directly on the Proxmox Node shell.${NC}"
+    echo -e "${YELLOW}Error: This script must be run directly on the Proxmox Node shell.${NC}" >&2
     exit 1
 fi
 
@@ -22,7 +22,7 @@ function prompt_input() {
     local default_value="$2"
     local variable_name="$3"
     read -p "$prompt_text [$default_value]: " input_value
-    if [ -z "$input_value" ]; then
+    if [[ -z "$input_value" ]]; then
         eval $variable_name="'$default_value'"
     else
         eval $variable_name="'$input_value'"

@@ -43,6 +43,7 @@ fake_admin = Blueprint(
 
 # Fake device data
 
+# nosonar: intentional honeypot network configuration — all IPs are fake bait data
 FAKE_DEVICES = [
     {
         "id": 1, "hostname": "DESKTOP-A1B2C3D", "mac": "A4:83:E7:2F:01:AA",
@@ -96,6 +97,7 @@ FAKE_DEVICES = [
     },
 ]
 
+# nosonar: intentional honeypot network configuration — all IPs/subnets are fake bait data
 FAKE_ROUTER_CONFIG = {
     "general": {
         "hostname": "NetGate-Pro-R4500",
@@ -193,7 +195,7 @@ def _log_access(path: str) -> None:
 
 # Routes
 
-@fake_admin.route("/admin")
+@fake_admin.route("/admin", methods=["GET"])
 def admin_login_page():
     """Serve the admin login page."""
     _log_access("/admin")
@@ -235,7 +237,7 @@ def admin_login():
     return redirect(url_for("fake_admin.admin_dashboard"))
 
 
-@fake_admin.route("/admin/dashboard")
+@fake_admin.route("/admin/dashboard", methods=["GET"])
 def admin_dashboard():
     """Serve the admin dashboard (requires login)."""
     _log_access("/admin/dashboard")
@@ -247,7 +249,7 @@ def admin_dashboard():
     return render_template("admin_dashboard.html", username=username)
 
 
-@fake_admin.route("/admin/api/devices")
+@fake_admin.route("/admin/api/devices", methods=["GET"])
 def api_devices():
     """Return fake JSON device list."""
     _log_access("/admin/api/devices")
@@ -310,7 +312,7 @@ def api_config_post():
     })
 
 
-@fake_admin.route("/admin/logout")
+@fake_admin.route("/admin/logout", methods=["GET"])
 def admin_logout():
     """Handle logout."""
     _log_access("/admin/logout")

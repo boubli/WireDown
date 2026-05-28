@@ -12,7 +12,7 @@ echo -e "${CYAN}======================================================${NC}"
 echo ""
 
 if ! command -v qm &> /dev/null; then
-    echo -e "${YELLOW}Error: This script must be run directly on the Proxmox Node shell.${NC}"
+    echo -e "${YELLOW}Error: This script must be run directly on the Proxmox Node shell.${NC}" >&2
     exit 1
 fi
 
@@ -22,7 +22,7 @@ function prompt_input() {
     local default_value="$2"
     local variable_name="$3"
     read -p "$prompt_text [$default_value]: " input_value
-    if [ -z "$input_value" ]; then
+    if [[ -z "$input_value" ]]; then
         eval $variable_name="'$default_value'"
     else
         eval $variable_name="'$input_value'"
@@ -39,7 +39,7 @@ ID=$(pvesh get /cluster/nextid)
 
 echo -e "${CYAN}[*] Downloading Ubuntu 22.04 Cloud Image (Jammy)...${NC}"
 mkdir -p /var/lib/vz/template/qemu
-if [ ! -f /var/lib/vz/template/qemu/ubuntu-22.04-server-cloudimg-amd64.img ]; then
+if [[ ! -f /var/lib/vz/template/qemu/ubuntu-22.04-server-cloudimg-amd64.img ]]; then
     wget -qO /var/lib/vz/template/qemu/ubuntu-22.04-server-cloudimg-amd64.img https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
 fi
 
