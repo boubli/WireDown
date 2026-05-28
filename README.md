@@ -1,4 +1,9 @@
-# WireDown
+<div align="center">
+  <img src="wiredown-honeypot-logo.png" alt="WireDown Logo" width="200" height="200">
+  <h1>WireDown</h1>
+</div>
+
+<br />
 
 WireDown is a Wi-Fi honeypot and network tarpit. It uses an ESP32 to sniff 802.11 frames and a Python backend to sinkhole DNS, fake SSH/Admin interfaces, and monitor for CVE-2024-3094. It also has a zero-gravity UI using Matter.js to visualize the network state.
 
