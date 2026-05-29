@@ -2,6 +2,7 @@
 # Drops bots into a plain-text interactive shell that logs keystrokes.
 
 import asyncio
+import asyncssh
 import logging
 import os
 import struct
@@ -131,107 +132,38 @@ def _init_fs():
 # Initialize on module load
 _init_fs()
 
-# SSH Protocol Constants
 
-SSH_BANNER = b"SSH-2.0-OpenSSH_9.7p1 Ubuntu-6ubuntu0.1\r\n"
-SSH_MSG_KEXINIT = 20
+# Ensure keys exist
+def _ensure_keys():
+    FS_DIR.mkdir(parents=True, exist_ok=True)
+    ssh_dir = FS_DIR / ".ssh"
+    ssh_dir.mkdir(exist_ok=True)
+    rsa_key = ssh_dir / "id_rsa"
+    ed25519_key = ssh_dir / "id_ed25519"
+    
+    if not rsa_key.exists():
+        log.info("Generating new RSA host key...")
+        key = asyncssh.generate_private_key('ssh-rsa', key_size=2048)
+        key.write_private_key(str(rsa_key))
+        
+    if not ed25519_key.exists():
+        log.info("Generating new Ed25519 host key...")
+        key = asyncssh.generate_private_key('ssh-ed25519')
+        key.write_private_key(str(ed25519_key))
 
-# Standard algorithm lists (realistic OpenSSH 9.7 defaults)
-KEX_ALGORITHMS = (
-    b"sntrup761x25519-sha512@openssh.com,"
-    b"curve25519-sha256,"
-    b"curve25519-sha256@libssh.org,"
-    b"ecdh-sha2-nistp256,"
-    b"ecdh-sha2-nistp384,"
-    b"ecdh-sha2-nistp521,"
-    b"diffie-hellman-group-exchange-sha256,"
-    b"diffie-hellman-group16-sha512,"
-    b"diffie-hellman-group18-sha512,"
-    b"diffie-hellman-group14-sha256"
-)
-
-HOST_KEY_ALGORITHMS = (
-    b"rsa-sha2-512-cert-v01@openssh.com,"
-    b"rsa-sha2-256-cert-v01@openssh.com,"
-    b"ecdsa-sha2-nistp256-cert-v01@openssh.com,"
-    b"ssh-ed25519-cert-v01@openssh.com,"
-    b"sk-ssh-ed25519-cert-v01@openssh.com,"
-    b"rsa-sha2-512,"
-    b"rsa-sha2-256,"
-    b"ecdsa-sha2-nistp256,"
-    b"ssh-ed25519,"
-    b"sk-ssh-ed25519@openssh.com"
-)
-
-CIPHERS = (
-    b"chacha20-poly1305@openssh.com,"
-    b"aes128-ctr,"
-    b"aes192-ctr,"
-    b"aes256-ctr,"
-    b"aes128-gcm@openssh.com,"
-    b"aes256-gcm@openssh.com"
-)
-
-MACS = (
-    b"umac-64-etm@openssh.com,"
-    b"umac-128-etm@openssh.com,"
-    b"hmac-sha2-256-etm@openssh.com,"
-    b"hmac-sha2-512-etm@openssh.com,"
-    b"umac-64@openssh.com,"
-    b"umac-128@openssh.com,"
-    b"hmac-sha2-256,"
-    b"hmac-sha2-512"
-)
-
-COMPRESSION = b"none,zlib@openssh.com"
-
-
-def _build_kexinit_payload() -> bytes:
-    """Build a realistic SSH_MSG_KEXINIT packet payload."""
-    cookie = os.urandom(16)
-    payload = bytearray()
-    payload.append(SSH_MSG_KEXINIT)
-    payload.extend(cookie)
-
-    for namelist in [KEX_ALGORITHMS, HOST_KEY_ALGORITHMS,
-                     CIPHERS, CIPHERS,  # c->s and s->c
-                     MACS, MACS,
-                     COMPRESSION, COMPRESSION,
-                     b"", b""]:  # languages c->s, s->c
-        payload.extend(struct.pack(">I", len(namelist)))
-        payload.extend(namelist)
-
-    payload.append(0)  # first_kex_packet_follows = false
-    payload.extend(struct.pack(">I", 0))  # reserved
-    return bytes(payload)
-
-
-def _build_ssh_packet(payload: bytes) -> bytes:
-    """Wrap a payload into an SSH binary packet (unencrypted)."""
-    padding_len = 8 - ((5 + len(payload)) % 8)
-    if padding_len < 4:
-        padding_len += 8
-    packet_len = 1 + len(payload) + padding_len
-    packet = struct.pack(">IB", packet_len, padding_len)
-    packet += payload
-    packet += os.urandom(padding_len)
-    return packet
-
+_ensure_keys()
 
 class FakeSSHSession:
-
     def __init__(self, session_id: str, client_ip: str, client_port: int):
         self.session_id = session_id
         self.client_ip = client_ip
         self.client_port = client_port
-        self.username: Optional[str] = None
-        self.password: Optional[str] = None
-        self.client_banner: Optional[str] = None
-        self.commands: list[dict] = []
+        self.username = None
+        self.password = None
+        self.commands = []
         self.connected_at = datetime.now(timezone.utc)
-        self.disconnected_at: Optional[datetime] = None
+        self.disconnected_at = None
         self.active = True
-        self.handshake_data: dict = {}
 
     @property
     def duration_seconds(self) -> float:
@@ -249,7 +181,6 @@ class FakeSSHSession:
             "client_port": self.client_port,
             "username": self.username,
             "password": self.password,
-            "client_banner": self.client_banner,
             "commands": self.commands,
             "connected_at": self.connected_at.isoformat(),
             "disconnected_at": self.disconnected_at.isoformat() if self.disconnected_at else None,
@@ -259,8 +190,79 @@ class FakeSSHSession:
         }
 
 
-class FakeSSHServer:
+class HoneypotSession(asyncssh.SSHServerSession):
+    def __init__(self, server_instance, session_model):
+        self.server_instance = server_instance
+        self.session_model = session_model
+        self.username = self.session_model.username or "root"
+        self._chan = None
 
+    def connection_made(self, chan):
+        self._chan = chan
+        welcome_msg = (
+            "\r\n"
+            "══════════════════════════════════════════\r\n"
+            "  Ubuntu 24.04 LTS (GNU/Linux 6.5.0-44)\r\n"
+            "══════════════════════════════════════════\r\n"
+            "\r\n"
+            "  System information as of "
+        ) + datetime.now(timezone.utc).strftime("%a %b %d %H:%M:%S UTC %Y") + (
+            "\r\n\r\n"
+            "  System load:  0.23              Users logged in: 1\r\n"
+            "  Memory usage: 42%               IPv4 address:    10.0.0.50\r\n"
+            "  Swap usage:   0%                IPv6 address:    ::1\r\n"
+            "  Disk usage:   67%               Processes:       187\r\n"
+            "\r\n"
+            "  * Security update: xz-utils 5.6.1 available.\r\n"
+            "    Run `sudo apt upgrade` to update.\r\n"
+            "\r\n"
+            "Last login: "
+        ) + datetime.now(timezone.utc).strftime("%a %b %d %H:%M:%S %Y") + " from 192.168.1.105\r\n"
+        self._chan.write(welcome_msg)
+        self._prompt()
+
+    def _prompt(self):
+        self._chan.write(f"{self.username}@honeypot:~$ ")
+
+    def data_received(self, data, datatype):
+        line = data.strip()
+        
+        # handle enter without data
+        if not line:
+            self._chan.write("\r\n")
+            self._prompt()
+            return
+            
+        cmd = line
+        output = self.server_instance._execute_command(cmd, self.username, self.session_model)
+        
+        cmd_event = {
+            "type": "ssh_command",
+            "client_ip": self.session_model.client_ip,
+            "client_port": self.session_model.client_port,
+            "session_id": self.session_model.session_id,
+            "username": self.username,
+            "password": self.session_model.password,
+            "command": cmd,
+            "output": output,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        self.session_model.commands.append(cmd_event)
+        self.server_instance._emit_event(cmd_event)
+
+        if cmd in ("exit", "quit", "logout"):
+            self._chan.write("\r\nlogout\r\nConnection to honeypot closed.\r\n")
+            self._chan.exit(0)
+            return
+
+        self._chan.write("\r\n" + output + "\r\n")
+        self._prompt()
+        
+    def eof_received(self):
+        self._chan.exit(0)
+
+
+class FakeSSHServer:
     def __init__(
         self,
         host: str = "0.0.0.0",
@@ -275,17 +277,13 @@ class FakeSSHServer:
 
         self._sessions: dict[str, FakeSSHSession] = {}
         self._lock = threading.Lock()
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._server: Optional[asyncio.AbstractServer] = None
-        self._thread: Optional[threading.Thread] = None
+        self._loop = None
+        self._server = None
+        self._thread = None
         self._running = False
 
-    # Public API
-
     def start(self) -> None:
-        """Start the SSH honeypot in a background thread."""
         if self._running:
-            log.warning("FakeSSHServer already running")
             return
         self._running = True
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name="fake-ssh")
@@ -293,7 +291,6 @@ class FakeSSHServer:
         log.info("FakeSSH honeypot starting on %s:%d", self.host, self.port)
 
     def stop(self) -> None:
-        """Gracefully shut down the server."""
         self._running = False
         if self._loop and self._server:
             self._loop.call_soon_threadsafe(self._server.close)
@@ -304,13 +301,16 @@ class FakeSSHServer:
         log.info("FakeSSH honeypot stopped")
 
     def get_sessions(self) -> dict:
-        """Return active and historical sessions."""
         with self._lock:
             active = [s.to_dict() for s in self._sessions.values() if s.active]
             historical = [s.to_dict() for s in self._sessions.values() if not s.active]
         return {"active": active, "historical": historical}
 
-    # Event Loop
+    def _emit_event(self, event: dict) -> None:
+        try:
+            self.on_activity(event)
+        except Exception as exc:
+            log.error("Error emitting activity event: %s", exc)
 
     def _run_loop(self) -> None:
         self._loop = asyncio.new_event_loop()
@@ -324,211 +324,70 @@ class FakeSSHServer:
             self._loop.close()
 
     async def _start_server(self) -> None:
-        self._server = await asyncio.start_server(
-            self._handle_client, self.host, self.port
+        def process_factory(process):
+            peer = process.get_extra_info('peername')
+            client_ip = peer[0] if peer else "unknown"
+            client_port = peer[1] if peer else 0
+            session_id = str(uuid.uuid4())
+            session_model = FakeSSHSession(session_id, client_ip, client_port)
+            with self._lock:
+                self._sessions[session_id] = session_model
+            
+            session_model.username = process.get_extra_info('username') or "root"
+            return HoneypotSession(self, session_model)
+
+        class ServerFactory(asyncssh.SSHServer):
+            def __init__(self, server_instance):
+                self.server_instance = server_instance
+                self.session_id = str(uuid.uuid4())
+                self.client_ip = "unknown"
+                self.client_port = 0
+                
+            def connection_made(self, conn):
+                peer = conn.get_extra_info('peername')
+                self.client_ip = peer[0] if peer else "unknown"
+                self.client_port = peer[1] if peer else 0
+                
+                self.server_instance._emit_event({
+                    "type": "ssh_connection",
+                    "client_ip": self.client_ip,
+                    "client_port": self.client_port,
+                    "session_id": self.session_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+                log.info("SSH connection from %s:%d [%s]", self.client_ip, self.client_port, self.session_id)
+                
+            def connection_lost(self, exc):
+                log.info("Client %s disconnected", self.client_ip)
+                
+            def begin_auth(self, username):
+                return True
+                
+            def password_auth_supported(self):
+                return True
+                
+            def validate_password(self, username, password):
+                self.server_instance._emit_event({
+                    "type": "ssh_auth",
+                    "client_ip": self.client_ip,
+                    "client_port": self.client_port,
+                    "session_id": self.session_id,
+                    "username": username,
+                    "password": password,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+                log.info("SSH auth: %s:%s from %s", username, password, self.client_ip)
+                return True
+
+        self._server = await asyncssh.create_server(
+            lambda: ServerFactory(self),
+            self.host,
+            self.port,
+            server_host_keys=[str(FS_DIR / ".ssh" / "id_rsa"), str(FS_DIR / ".ssh" / "id_ed25519")],
+            process_factory=process_factory
         )
         addrs = ", ".join(str(s.getsockname()) for s in self._server.sockets)
-        log.info("FakeSSH listening on %s", addrs)
-
-    # Client Handler
-
-    async def _handle_client(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ) -> None:
-        peer = writer.get_extra_info("peername")
-        client_ip = peer[0] if peer else "unknown"
-        client_port = peer[1] if peer else 0
-        session_id = str(uuid.uuid4())
-
-        session = FakeSSHSession(session_id, client_ip, client_port)
-        with self._lock:
-            self._sessions[session_id] = session
-
-        self._emit_event({
-            "type": "ssh_connection",
-            "client_ip": client_ip,
-            "client_port": client_port,
-            "session_id": session_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-
-        log.info("SSH connection from %s:%d [%s]", client_ip, client_port, session_id)
-
-        try:
-            writer.write(SSH_BANNER)
-            await writer.drain()
-
-            try:
-                client_banner_raw = await asyncio.wait_for(reader.readline(), timeout=30)
-                session.client_banner = client_banner_raw.decode("utf-8", errors="replace").strip()
-                log.info("Client banner: %s", session.client_banner)
-            except asyncio.TimeoutError:
-                log.warning("Client %s timed out during banner exchange", client_ip)
-                return
-
-            kexinit_payload = _build_kexinit_payload()
-            kexinit_packet = _build_ssh_packet(kexinit_payload)
-            writer.write(kexinit_packet)
-            await writer.drain()
-
-            # Read client's KEXINIT (or whatever they send)
-            handshake_start = time.monotonic()
-            try:
-                client_kex_data = await asyncio.wait_for(reader.read(4096), timeout=15)
-                handshake_duration_ms = (time.monotonic() - handshake_start) * 1000
-                session.handshake_data = {
-                    "client_banner": session.client_banner,
-                    "client_kex_raw_len": len(client_kex_data),
-                    "handshake_duration_ms": round(handshake_duration_ms, 2),
-                }
-            except asyncio.TimeoutError:
-                log.warning("Client %s timed out during kex", client_ip)
-                return
-
-            # Phase 3: Transition to plain-text interactive mode
-            # In a real scenario, encryption would be negotiated.
-            # We skip that and switch to plain-text for interaction capture.
-
-            welcome_msg = (
-                "\r\n"
-                "══════════════════════════════════════════\r\n"
-                "  Ubuntu 24.04 LTS (GNU/Linux 6.5.0-44)\r\n"
-                "══════════════════════════════════════════\r\n"
-                "\r\n"
-                "  System information as of "
-            ).encode("utf-8") + datetime.now(timezone.utc).strftime("%a %b %d %H:%M:%S UTC %Y").encode("utf-8") + (
-                "\r\n\r\n"
-                "  System load:  0.23              Users logged in: 1\r\n"
-                "  Memory usage: 42%               IPv4 address:    10.0.0.50\r\n"
-                "  Swap usage:   0%                IPv6 address:    ::1\r\n"
-                "  Disk usage:   67%               Processes:       187\r\n"
-                "\r\n"
-                "  * Security update: xz-utils 5.6.1 available.\r\n"
-                "    Run `sudo apt upgrade` to update.\r\n"
-                "\r\n"
-                "Last login: "
-            ).encode("utf-8") + datetime.now(timezone.utc).strftime("%a %b %d %H:%M:%S %Y").encode("utf-8") + b" from 192.168.1.105\r\n"
-
-            # Phase 4: Authentication (plain-text capture)
-            writer.write(b"login: ")
-            await writer.drain()
-
-            try:
-                username_raw = await asyncio.wait_for(reader.readline(), timeout=60)
-                username = username_raw.decode("utf-8", errors="replace").strip()
-                if not username:
-                    username = "root"
-            except asyncio.TimeoutError:
-                return
-
-            writer.write(b"Password: ")
-            await writer.drain()
-
-            try:
-                password_raw = await asyncio.wait_for(reader.readline(), timeout=60)
-                password = password_raw.decode("utf-8", errors="replace").strip()
-            except asyncio.TimeoutError:
-                return
-
-            # fake auth delay so bots don't catch on
-            import random
-            delay = random.uniform(1.0, 3.0)
-            await asyncio.sleep(delay)
-
-            session.username = username
-            session.password = password
-
-            self._emit_event({
-                "type": "ssh_auth",
-                "client_ip": client_ip,
-                "client_port": client_port,
-                "session_id": session_id,
-                "username": username,
-                "password": password,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
-
-            log.info("SSH auth: %s:%s from %s", username, password, client_ip)
-
-            writer.write(welcome_msg)
-            await writer.drain()
-
-            # Phase 5: Interactive shell
-            await self._interactive_shell(reader, writer, session)
-
-        except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
-            log.info("Client %s disconnected abruptly", client_ip)
-        except Exception as exc:
-            log.error("Error handling SSH client %s: %s", client_ip, exc)
-        finally:
-            session.active = False
-            session.disconnected_at = datetime.now(timezone.utc)
-            self._emit_event({
-                "type": "ssh_disconnect",
-                "client_ip": client_ip,
-                "session_id": session_id,
-                "duration_seconds": round(session.duration_seconds, 2),
-                "command_count": session.command_count,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
-            try:
-                writer.close()
-                await writer.wait_closed()
-            except Exception:
-                pass
-
-    # Interactive Shell
-
-    async def _interactive_shell(
-        self,
-        reader: asyncio.StreamReader,
-        writer: asyncio.StreamWriter,
-        session: FakeSSHSession,
-    ) -> None:
-        username = session.username or "user"
-        prompt = f"{username}@honeypot:~$ ".encode()
-
-        while self._running:
-            writer.write(prompt)
-            await writer.drain()
-
-            try:
-                line = await asyncio.wait_for(reader.readline(), timeout=300)
-            except asyncio.TimeoutError:
-                writer.write(b"\r\nConnection timed out.\r\n")
-                await writer.drain()
-                break
-
-            if not line:
-                break
-
-            cmd = line.decode("utf-8", errors="replace").strip()
-            if not cmd:
-                continue
-
-            output = self._execute_command(cmd, username, session)
-
-            cmd_event = {
-                "type": "ssh_command",
-                "client_ip": session.client_ip,
-                "client_port": session.client_port,
-                "session_id": session.session_id,
-                "username": username,
-                "password": session.password,
-                "command": cmd,
-                "output": output,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-            session.commands.append(cmd_event)
-            self._emit_event(cmd_event)
-
-            if cmd in ("exit", "quit", "logout"):
-                writer.write(b"logout\r\nConnection to honeypot closed.\r\n")
-                await writer.drain()
-                break
-
-            writer.write(output.encode("utf-8") + b"\r\n")
-            await writer.drain()
+        log.info("FakeSSH listening on %s (asyncssh)", addrs)
 
     def _execute_command(self, cmd: str, username: str, session: FakeSSHSession) -> str:  # nosonar: cognitive complexity — dispatch table is intentional
         """Process a command and return realistic output."""

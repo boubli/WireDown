@@ -210,7 +210,6 @@
 
   socket.on("connect", () => {
     console.log("[WireDown] Connected to backend");
-    setEspStatus(null); // we don't know ESP status yet
   });
 
   socket.on("disconnect", () => {
@@ -219,7 +218,6 @@
 
   socket.on("init", (data) => {
     console.log("[WireDown] Init data received:", data);
-    setEspStatus(data.esp32_connected);
     if (data.devices) {
       for (const dev of data.devices) {
         if (dev.status !== "destroyed") {
@@ -233,9 +231,7 @@
     spawnDevice(dev.mac, dev.rssi, dev.channel);
   });
 
-  socket.on("esp32_status", (data) => {
-    setEspStatus(data.connected);
-  });
+
 
   socket.on("isolation_confirmed", (data) => {
     addEventLog("success", `Isolation confirmed for ${data.mac}`);
@@ -256,20 +252,7 @@
 
   /* ── HUD Functions ──────────────────────────────────────── */
 
-  function setEspStatus(connected) {
-    const dot   = document.getElementById("espDot");
-    const label = document.getElementById("espLabel");
-    if (connected === true) {
-      dot.className = "status-dot online";
-      label.textContent = "Online";
-    } else if (connected === false) {
-      dot.className = "status-dot offline";
-      label.textContent = "Offline";
-    } else {
-      dot.className = "status-dot offline";
-      label.textContent = "Unknown";
-    }
-  }
+
 
   function updateStats() {
     const all       = aiAgent.getAllDevices();

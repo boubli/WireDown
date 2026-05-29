@@ -49,7 +49,12 @@ ID=$(pvesh get /cluster/nextid)
 echo -e "${CYAN}[*] Downloading Debian 12 minimal template...${NC}"
 pveam update >/dev/null
 TEMPLATE=$(pveam available -section system | grep debian-12-standard | awk '{print $2}' | head -n 1)
-pveam download local $TEMPLATE >/dev/null || true
+TEMPLATE_PATH="/var/lib/vz/template/cache/${TEMPLATE##*/}"
+if [ ! -f "$TEMPLATE_PATH" ]; then
+    pveam download local $TEMPLATE >/dev/null || true
+else
+    echo -e "${GREEN}[+] Template already cached, skipping download.${NC}"
+fi
 
 echo -e "${CYAN}[*] Creating LXC Container $ID...${NC}"
 pct create $ID local:vztmpl/${TEMPLATE##*/} \
@@ -64,19 +69,6 @@ pct create $ID local:vztmpl/${TEMPLATE##*/} \
     --unprivileged 0 \
     --password wiredown
 
-echo -e "${CYAN}[*] Configuring LXC capabilities...${NC}"
-echo "lxc.cap.keep: net_raw net_admin" >> /etc/pve/lxc/$ID.conf
-
-echo -e "${CYAN}[*] Checking for ESP32 on USB...${NC}"
-if [ -e /dev/ttyUSB0 ]; then
-    echo -e "${GREEN}[+] ESP32 detected on /dev/ttyUSB0! Configuring auto-passthrough...${NC}"
-    echo "lxc.cgroup2.devices.allow: c 188:* rwm" >> /etc/pve/lxc/$ID.conf
-    echo "lxc.mount.entry: /dev/ttyUSB0 dev/ttyUSB0 none bind,optional,create=file" >> /etc/pve/lxc/$ID.conf
-    UNCOMMENT_USB=1
-else
-    echo -e "${YELLOW}[!] No ESP32 detected on /dev/ttyUSB0. You can plug it in and configure it later.${NC}"
-    UNCOMMENT_USB=0
-fi
 
 echo -e "${CYAN}[*] Starting Container $ID...${NC}"
 pct start $ID
@@ -88,10 +80,7 @@ pct exec $ID -- bash -c "while ! ping -c 1 -W 1 8.8.8.8 >/dev/null; do sleep 1; 
 echo -e "${CYAN}[*] Installing Docker, build tools, and WireDown inside LXC...${NC}"
 pct exec $ID -- bash -c "apt-get update && apt-get install -y curl git build-essential cmake && curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh"
 pct exec $ID -- bash -c "git clone https://github.com/boubli/WireDown.git /opt/wiredown && cd /opt/wiredown && cp .env.example .env"
-if [ "$UNCOMMENT_USB" -eq 1 ]; then
-    pct exec $ID -- bash -c "sed -i 's|# devices:|devices:|g' /opt/wiredown/docker-compose.yml"
-    pct exec $ID -- bash -c "sed -i 's|#   - /dev/ttyUSB0:/dev/ttyUSB0|  - /dev/ttyUSB0:/dev/ttyUSB0|g' /opt/wiredown/docker-compose.yml"
-fi
+pct exec $ID -- bash -c "echo 'DEPLOYMENT_MODE=PROXMOX' >> /opt/wiredown/.env"
 pct exec $ID -- bash -c "cd /opt/wiredown && docker compose up -d"
 
 echo -e "${CYAN}[*] Compiling Linux sensor (C++ Core)...${NC}"

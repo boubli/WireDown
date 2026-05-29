@@ -22,10 +22,7 @@
       <span class="logo-text">WireDown</span>
     </div>
     <div class="status-group">
-      <div class="status-badge" id="espStatus">
-        <span class="status-dot offline" id="espDot"></span>
-        ESP32: <span id="espLabel">Offline</span>
-      </div>
+
       <div class="status-badge">
         <span class="status-dot online"></span>
         AI Agent: Active
@@ -172,9 +169,7 @@
     <button class="btn" id="btnSimulate" title="Spawn a simulated device">
       ⊕ Spawn Device
     </button>
-    <button class="btn" id="btnEspSetup" title="ESP32 Hardware Setup">
-      ⚙ ESP32 Setup
-    </button>
+
     <button class="btn danger" id="btnSpawnAttacker" title="Spawn a guaranteed attacker">
       ⚠ Spawn Attacker
     </button>
@@ -233,49 +228,8 @@
 <!-- App modules -->
 <script src="ai_agent.js"></script>
 <script src="physics_world.js"></script>
-<script src="esp32_setup.js"></script>
 
-<!-- ESP32 Setup Modal -->
-<div class="modal-overlay" id="espModalOverlay">
-  <div class="modal-content">
-    <div class="modal-header">
-      <div class="modal-title">ESP32 Hardware Setup</div>
-      <button class="btn-close" id="btnCloseEspModal">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div class="modal-status">
-        <span class="status-badge" id="espDetectBadge">
-          <span class="status-dot offline" id="espDetectDot"></span>
-          <span id="espDetectLabel">Checking...</span>
-        </span>
-      </div>
 
-      <div id="espFormContainer">
-        <div class="form-group">
-          <label>WiFi SSID</label>
-          <input type="text" id="espSsid" placeholder="HoneypotNet" />
-        </div>
-        <div class="form-group">
-          <label>WiFi Password</label>
-          <div class="input-with-icon">
-            <input type="password" id="espPassword" placeholder="Secret!" />
-            <button class="toggle-pw" id="btnTogglePw">👁</button>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>Backend IP</label>
-          <input type="text" id="espBackendIp" placeholder="10.0.0.50" />
-        </div>
-        <button class="btn" id="btnFlashEsp" style="width: 100%; justify-content: center; margin-top: 10px;">⚡ Flash ESP32</button>
-      </div>
-
-      <div id="espConsoleContainer" style="display: none;">
-        <div class="esp-console" id="espConsole"></div>
-        <button class="btn" id="btnConsoleClose" style="width: 100%; justify-content: center; margin-top: 10px;">Close</button>
-      </div>
-    </div>
-  </div>
-</div>
 
 </body>
 </html>

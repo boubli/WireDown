@@ -703,53 +703,6 @@ html, body {
   .side-panel { width: 220px; }
   .status-badge { font-size: 0.6rem; padding: 2px 6px; }
   .btn { font-size: 0.6rem; padding: 5px 8px; }
-}
-
-/* ── Modal & ESP32 Setup ─────────────────────────────────── */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.3s ease;
-}
-
-.modal-overlay.active {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.modal-content {
-  background: var(--bg-panel);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  width: 400px;
-  max-width: 90vw;
-  box-shadow: var(--shadow-panel);
-  transform: translateY(20px);
-  transition: transform 0.3s ease;
-  overflow: hidden;
-}
-
-.modal-overlay.active .modal-content {
-  transform: translateY(0);
-}
-
-.modal-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-subtle);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: rgba(0, 0, 0, 0.2);
-}
-
 .modal-title {
   font-family: 'Orbitron', sans-serif;
   font-size: 0.9rem;

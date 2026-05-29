@@ -298,6 +298,7 @@ def frontend_connect():
             "isolated_devices": sum(1 for d in devices.values() if d["status"] == "isolated"),
         },
         "esp32_connected": stats["esp32_connected"],
+        "deployment_mode": os.environ.get("DEPLOYMENT_MODE", "ESP32"),
     })
 
 
@@ -390,9 +391,8 @@ if __name__ == "__main__":
             app,
             host="0.0.0.0",
             port=5000,
-            debug=True,
+            debug=False,
             use_reloader=False,
-            allow_unsafe_werkzeug=True,
         )
     finally:
         dns_sinkhole.stop()
