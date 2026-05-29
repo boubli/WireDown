@@ -37,6 +37,12 @@ for ID in $(pct list | awk 'NR>1 {print $1}'); do
         
         echo -e "${CYAN}[*] Rebuilding and restarting Docker containers...${NC}"
         pct exec $ID -- bash -c "cd /opt/wiredown && test -f .env || cp .env.example .env && docker compose up -d --build"
+
+        echo -e "${CYAN}[*] Rebuilding C++ Linux Sensor...${NC}"
+        pct exec $ID -- bash -c "mkdir -p /opt/wiredown/platforms/linux/build && cd /opt/wiredown/platforms/linux/build && cmake .. && make"
+        
+        echo -e "${CYAN}[*] Restarting WireDown service...${NC}"
+        pct exec $ID -- bash -c "systemctl daemon-reload && systemctl restart wiredown.service || true"
         
         FOUND=1
         echo -e "${GREEN}[✔] Container $ID updated successfully!${NC}"

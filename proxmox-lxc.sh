@@ -64,6 +64,9 @@ pct create $ID local:vztmpl/${TEMPLATE##*/} \
     --unprivileged 0 \
     --password wiredown
 
+echo -e "${CYAN}[*] Configuring LXC capabilities...${NC}"
+echo "lxc.cap.keep: net_raw net_admin" >> /etc/pve/lxc/$ID.conf
+
 echo -e "${CYAN}[*] Checking for ESP32 on USB...${NC}"
 if [ -e /dev/ttyUSB0 ]; then
     echo -e "${GREEN}[+] ESP32 detected on /dev/ttyUSB0! Configuring auto-passthrough...${NC}"
@@ -82,14 +85,36 @@ sleep 5
 echo -e "${CYAN}[*] Waiting for network connection...${NC}"
 pct exec $ID -- bash -c "while ! ping -c 1 -W 1 8.8.8.8 >/dev/null; do sleep 1; done"
 
-echo -e "${CYAN}[*] Installing Docker and WireDown inside LXC...${NC}"
-pct exec $ID -- bash -c "apt-get update && apt-get install -y curl git && curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh"
+echo -e "${CYAN}[*] Installing Docker, build tools, and WireDown inside LXC...${NC}"
+pct exec $ID -- bash -c "apt-get update && apt-get install -y curl git build-essential cmake && curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh"
 pct exec $ID -- bash -c "git clone https://github.com/boubli/WireDown.git /opt/wiredown && cd /opt/wiredown && cp .env.example .env"
 if [ "$UNCOMMENT_USB" -eq 1 ]; then
     pct exec $ID -- bash -c "sed -i 's|# devices:|devices:|g' /opt/wiredown/docker-compose.yml"
     pct exec $ID -- bash -c "sed -i 's|#   - /dev/ttyUSB0:/dev/ttyUSB0|  - /dev/ttyUSB0:/dev/ttyUSB0|g' /opt/wiredown/docker-compose.yml"
 fi
 pct exec $ID -- bash -c "cd /opt/wiredown && docker compose up -d"
+
+echo -e "${CYAN}[*] Compiling Linux sensor (C++ Core)...${NC}"
+pct exec $ID -- bash -c "mkdir -p /opt/wiredown/platforms/linux/build && cd /opt/wiredown/platforms/linux/build && cmake .. && make"
+
+echo -e "${CYAN}[*] Setting up systemd service for WireDown Sensor...${NC}"
+pct exec $ID -- bash -c "cat <<EOF > /etc/systemd/system/wiredown.service
+[Unit]
+Description=WireDown Network Sensor
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/wiredown/platforms/linux/build/wiredown-linux eth0
+WorkingDirectory=/opt/wiredown
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+pct exec $ID -- bash -c "systemctl daemon-reload && systemctl enable wiredown.service && systemctl start wiredown.service"
 
 echo -e "${CYAN}[*] Retrieving IP Address...${NC}"
 IP=$(pct exec $ID -- ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')

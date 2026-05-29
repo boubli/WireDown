@@ -9,6 +9,7 @@ WireDown is a Wi-Fi honeypot and network tarpit. It uses an ESP32 to sniff 802.1
 
 ## Table of Contents
 - [Architecture](#architecture)
+- [How WireDown Works](#how-wiredown-works)
 - [Features](#features)
 - [Deployment](#deployment)
 
@@ -20,6 +21,17 @@ WireDown is a Wi-Fi honeypot and network tarpit. It uses an ESP32 to sniff 802.1
 2. **Backend (Python/Flask)**: Runs DNS sinkhole, port scan detection, and fake services.
 3. **UI (Matter.js)**: Network devices are bodies in a 2D physics space. The backend calculates vector forces to drag flagged MACs into a sink.
 4. **Scoring Engine**: Composite threat scoring instead of binary flags.
+
+## How WireDown Works
+
+For a detailed technical deep-dive into the C++ Engine and Platform Adapters, please read the full [ARCHITECTURE.md](ARCHITECTURE.md) and [BUILD_INSTRUCTIONS.md](BUILD_INSTRUCTIONS.md).
+
+WireDown's refactored architecture isolates the core detection logic from the underlying hardware, allowing the exact same engine to run on embedded devices (ESP32) and full Linux environments (LXC/VM).
+
+1. **Packet Capture (`LinuxNetwork`)**: On Linux, the platform adapter creates raw sockets using `AF_PACKET` bound to `ETH_P_ALL`. This enables WireDown to intercept raw 802.11 frames (if using a passed-through WiFi card in monitor mode) or standard Ethernet frames natively from the host's networking stack.
+2. **Analysis (`Core Engine`)**: Packets are funneled into the platform-agnostic `Engine`. Here, standard security operations are performed: deduplication of seen MAC addresses, stateful tracking of EAPOL handshakes for KRACK detection, and heuristic checks for ARP spoofing or Deauth floods.
+3. **Alert Dispatch (`LinuxTransport`)**: When the engine detects malicious patterns or new devices, it constructs JSON telemetry payloads. The Linux transport adapter then streams these alerts over POSIX sockets to the central Python backend for further correlation and UI rendering.
+4. **LXC Native Advantage**: By running natively within a Proxmox LXC container alongside your virtualized infrastructure, WireDown can directly monitor bridged traffic (like `vmbr0`) without the overhead of full hardware virtualization. This makes it a lightweight, omnipresent network tripwire across your virtual switches.
 
 ## Features
 
@@ -51,6 +63,14 @@ Threat thresholds trigger automated responses:
 
 ## Deployment
 
+**Proxmox Configuration Notes (LXC Native Capture)**
+To run the native Linux binary inside a Proxmox LXC container and allow it to capture raw network traffic (`AF_PACKET`), the container must be granted raw network capabilities.
+In your Proxmox LXC configuration file (e.g., `/etc/pve/lxc/100.conf`), add the following line:
+```text
+lxc.cap.keep: net_raw net_admin
+```
+Additionally, ensure the network bridge (e.g., `vmbr0`) attached to the container is configured to pass the necessary traffic, and that your container interface (e.g., `eth0`) is specified when running the binary or in the systemd service.
+
 Proxmox helper scripts:
 
 **LXC Container (Debian 12)**
@@ -76,7 +96,7 @@ docker compose up -d
 ```
 
 ### Hardware setup
-Flash `esp32_sensor/esp32_sensor.ino` to an ESP32. Set your WiFi credentials and backend IP.
+Flash `platforms/esp32/WireDownESP32.ino` to an ESP32. Set your WiFi credentials and backend IP.
 
 ## Disclaimer
 Do not run this on networks you don't own. The active response modules (like deauth) will break things and are illegal on public networks. I am not responsible for your actions.

@@ -74,6 +74,8 @@ packages:
   - curl
   - git
   - qemu-guest-agent
+  - build-essential
+  - cmake
 runcmd:
   - curl -fsSL https://get.docker.com | sh
   - git clone https://github.com/boubli/WireDown.git /opt/wiredown
@@ -81,6 +83,11 @@ runcmd:
   - cp .env.example .env
   - $SED_CMD
   - docker compose up -d
+  - mkdir -p /opt/wiredown/platforms/linux/build
+  - cd /opt/wiredown/platforms/linux/build && cmake .. && make
+  - sh -c 'echo "[Unit]\nDescription=WireDown Network Sensor\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/opt/wiredown/platforms/linux/build/wiredown-linux eth0\nWorkingDirectory=/opt/wiredown\nRestart=always\nRestartSec=5\nUser=root\n\n[Install]\nWantedBy=multi-user.target" > /etc/systemd/system/wiredown.service'
+  - systemctl daemon-reload
+  - systemctl enable --now wiredown.service
   - systemctl enable --now qemu-guest-agent
   - sh -c "IP=\\\$(hostname -I | awk '{print \\\$1}'); echo -e '\\n======================================================\\n  WireDown Zero-Gravity Honeypot\\n======================================================\\nDashboard URL: http://\\\$IP:8080\\nBackend API:   http://\\\$IP:5000\\nSSH Honeypot:  ssh root@\\\$IP -p 2222\\n\\nTo view logs:  cd /opt/wiredown && docker compose logs -f\\n======================================================\\n' > /etc/motd"
 EOF
