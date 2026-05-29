@@ -1,12 +1,4 @@
-"""
-WireDown Honeypot — Progressive Bandwidth Throttle
-====================================================
-Manages per-device bandwidth degradation through five stages.  A
-background thread automatically advances devices through the stages on
-a configurable schedule.  A ``should_delay()`` helper lets the Flask
-request layer inject artificial latency proportional to the current
-throttle stage.
-"""
+# progressive bandwidth degradation for flagged devices
 
 import enum
 import logging
@@ -18,12 +10,11 @@ logger = logging.getLogger("wiredown.bandwidth_throttle")
 
 
 class ThrottleStage(enum.Enum):
-    """Progressive throttle stages with associated bandwidth percentages."""
-    FULL     = ("FULL",     100)
-    DEGRADED = ("DEGRADED",  50)
-    CRAWL    = ("CRAWL",     10)
-    TRICKLE  = ("TRICKLE",    1)
-    ISOLATED = ("ISOLATED",   0)
+    FULL     = ("Full Speed",     100)
+    DEGRADED = ("Degraded Speed",  50)
+    CRAWL    = ("Crawl Mode",     10)
+    TRICKLE  = ("Trickle Feed",    1)
+    ISOLATED = ("Isolated",        0)
 
     def __init__(self, label: str, bandwidth_pct: int) -> None:
         self.label = label
@@ -31,10 +22,7 @@ class ThrottleStage(enum.Enum):
 
     @property
     def delay_ms(self) -> int:
-        """
-        Return a synthetic delay in milliseconds that simulates reduced
-        bandwidth.  FULL → 0 ms, ISOLATED → 10 000 ms (effectively blocked).
-        """
+
         mapping = {
             100: 0,
             50:  200,
@@ -45,7 +33,7 @@ class ThrottleStage(enum.Enum):
         return mapping.get(self.bandwidth_pct, 0)
 
 
-# Ordered progression list
+
 STAGE_ORDER: List[ThrottleStage] = [
     ThrottleStage.FULL,
     ThrottleStage.DEGRADED,
@@ -56,7 +44,6 @@ STAGE_ORDER: List[ThrottleStage] = [
 
 
 class _DeviceState:
-    """Internal mutable state for a single throttled device."""
 
     __slots__ = ("mac", "ip", "stage_index", "stage_entered_at",
                  "engaged_at", "stage_duration")
@@ -89,14 +76,13 @@ class _DeviceState:
 
     @property
     def progress_pct(self) -> float:
-        """Overall progression percentage across all stages (0–100)."""
+
         total_stages = len(STAGE_ORDER)
         completed = self.stage_index
         in_stage_frac = min(self.time_in_stage / self.stage_duration, 1.0)
         return ((completed + in_stage_frac) / total_stages) * 100.0
 
     def advance(self) -> Tuple[ThrottleStage, ThrottleStage]:
-        """Move to the next stage. Returns (old_stage, new_stage)."""
         old = self.stage
         self.stage_index = min(self.stage_index + 1, len(STAGE_ORDER) - 1)
         self.stage_entered_at = time.time()
@@ -104,19 +90,6 @@ class _DeviceState:
 
 
 class BandwidthThrottle:
-    """
-    Progressive bandwidth degradation manager.
-
-    Parameters
-    ----------
-    stage_duration : float
-        Seconds each stage lasts before automatic advancement (default 15).
-    on_isolate : callable or None
-        ``callback(mac)`` fired when a device reaches ISOLATED.
-    on_stage_change : callable or None
-        ``callback(mac, old_stage, new_stage, progress)`` fired on every
-        stage transition.
-    """
 
     def __init__(
         self,
@@ -134,12 +107,9 @@ class BandwidthThrottle:
         logger.info("BandwidthThrottle initialised (stage_duration=%.1fs)",
                      stage_duration)
 
-    # ------------------------------------------------------------------
-    # Lifecycle
-    # ------------------------------------------------------------------
+
 
     def start(self) -> None:
-        """Start the background progression thread."""
         if self._running:
             return
         self._running = True
@@ -151,24 +121,15 @@ class BandwidthThrottle:
         logger.info("Bandwidth throttle progression thread started")
 
     def stop(self) -> None:
-        """Stop the background thread."""
         self._running = False
         if self._thread is not None:
             self._thread.join(timeout=5)
             self._thread = None
         logger.info("BandwidthThrottle stopped")
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+
 
     def engage(self, mac: str, ip: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Begin throttle progression for a device.
-
-        If the device is already being throttled, this is a no-op and
-        returns the current status.
-        """
         with self._lock:
             if mac in self._devices:
                 logger.debug("Throttle already engaged for %s", mac)
@@ -179,11 +140,6 @@ class BandwidthThrottle:
             return self._status_dict(state)
 
     def disengage(self, mac: str) -> bool:
-        """
-        Stop throttling a device.
-
-        Returns ``True`` if the device was being throttled, ``False`` otherwise.
-        """
         with self._lock:
             removed = self._devices.pop(mac, None)
         if removed is not None:
@@ -192,12 +148,6 @@ class BandwidthThrottle:
         return False
 
     def get_status(self, mac: str) -> Optional[Dict[str, Any]]:
-        """
-        Return the throttle status for *mac*, or ``None`` if not throttled.
-
-        Keys: ``stage``, ``bandwidth_pct``, ``time_remaining``,
-        ``progress``, ``delay_ms``.
-        """
         with self._lock:
             state = self._devices.get(mac)
             if state is None:
@@ -205,26 +155,17 @@ class BandwidthThrottle:
             return self._status_dict(state)
 
     def get_all_active(self) -> List[Dict[str, Any]]:
-        """Return status dicts for every device currently being throttled."""
         with self._lock:
             return [self._status_dict(s) for s in self._devices.values()]
 
     def should_delay(self, mac: str) -> int:
-        """
-        Return the number of milliseconds the Flask layer should sleep
-        before forwarding traffic for *mac*.
-
-        Returns ``0`` if the device is not being throttled.
-        """
         with self._lock:
             state = self._devices.get(mac)
             if state is None:
                 return 0
             return state.stage.delay_ms
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
+
 
     @staticmethod
     def _status_dict(state: _DeviceState) -> Dict[str, Any]:
@@ -240,7 +181,6 @@ class BandwidthThrottle:
         }
 
     def _progression_loop(self) -> None:
-        """Advance devices through throttle stages automatically."""
         while self._running:
             time.sleep(0.5)  # check twice per second
             callbacks_to_fire: List[Tuple[str, ...]] = []
@@ -268,7 +208,7 @@ class BandwidthThrottle:
                     if new_stage == ThrottleStage.ISOLATED and self._on_isolate is not None:
                         callbacks_to_fire.append(("isolate", mac))
 
-            # Fire callbacks outside the lock
+
             for cb_info in callbacks_to_fire:
                 if cb_info[0] == "stage_change":
                     self._fire_stage_change(cb_info[1], cb_info[2],

@@ -1,16 +1,5 @@
-"""
-╔══════════════════════════════════════════════════════════════╗
-║  WireDown — Fake SSH Honeypot Server                         ║
-║  asyncio TCP · SSH banner · Interactive shell trap           ║
-╚══════════════════════════════════════════════════════════════╝
-
-Emulates an OpenSSH 9.7p1 server on port 2222. Sends a realistic
-SSH banner + key-exchange init, then drops into a plain-text
-interactive shell that logs every keystroke.
-
-The deliberately-exposed xz-utils 5.6.1 (CVE-2024-3094) acts as
-high-value bait to lure and fingerprint threat actors.
-"""
+# Fake SSH Honeypot Server
+# Drops bots into a plain-text interactive shell that logs keystrokes.
 
 import asyncio
 import logging
@@ -230,7 +219,6 @@ def _build_ssh_packet(payload: bytes) -> bytes:
 
 
 class FakeSSHSession:
-    """Tracks a single SSH honeypot session."""
 
     def __init__(self, session_id: str, client_ip: str, client_port: int):
         self.session_id = session_id
@@ -272,22 +260,6 @@ class FakeSSHSession:
 
 
 class FakeSSHServer:
-    """
-    Asynchronous fake SSH server that emulates OpenSSH 9.7p1.
-
-    Parameters
-    ----------
-    host : str
-        Bind address (default 0.0.0.0).
-    port : int
-        Listen port (default 2222).
-    on_activity : callable
-        Callback ``on_activity(event_dict)`` invoked for every
-        connection, authentication, and command event.
-    on_xz_probe : callable
-        Callback ``on_xz_probe(client_ip, details)`` invoked when a
-        client probes for xz-utils / CVE-2024-3094 indicators.
-    """
 
     def __init__(
         self,
@@ -383,7 +355,6 @@ class FakeSSHServer:
         log.info("SSH connection from %s:%d [%s]", client_ip, client_port, session_id)
 
         try:
-            # Phase 1: SSH banner exchange
             writer.write(SSH_BANNER)
             await writer.drain()
 
@@ -395,7 +366,6 @@ class FakeSSHServer:
                 log.warning("Client %s timed out during banner exchange", client_ip)
                 return
 
-            # Phase 2: Key exchange init
             kexinit_payload = _build_kexinit_payload()
             kexinit_packet = _build_ssh_packet(kexinit_payload)
             writer.write(kexinit_packet)
@@ -460,7 +430,7 @@ class FakeSSHServer:
             except asyncio.TimeoutError:
                 return
 
-            # Realistic authentication delay (1-3 seconds)
+            # fake auth delay so bots don't catch on
             import random
             delay = random.uniform(1.0, 3.0)
             await asyncio.sleep(delay)
@@ -566,11 +536,9 @@ class FakeSSHServer:
         cmd_parts = cmd.strip().split()
         base_cmd = cmd_parts[0].lower() if cmd_parts else ""
 
-        # Exit commands
         if cmd_lower in ("exit", "quit", "logout"):
             return ""
 
-        # ls
         if base_cmd == "ls":
             import pathlib, time, stat
             FS_DIR = pathlib.Path(__file__).parent / "honeypot_fs"
@@ -609,7 +577,6 @@ class FakeSSHServer:
                 return f"total 48\n" + "\n".join(entries)
             return "  ".join(entries)
 
-        # cat
         if base_cmd == "cat":
             import pathlib
             FS_DIR = pathlib.Path(__file__).parent / "honeypot_fs"
@@ -647,19 +614,15 @@ class FakeSSHServer:
             except Exception:
                 return f"cat: {target}: No such file or directory"
 
-        # whoami
         if cmd_lower == "whoami":
             return username
 
-        # pwd
         if cmd_lower == "pwd":
             return f"/home/{username}"
 
-        # id
         if cmd_lower == "id":
             return f"uid=1000({username}) gid=1000({username}) groups=1000({username}),27(sudo)"
 
-        # uname
         if base_cmd == "uname":
             if "-a" in cmd_lower:
                 return "Linux honeypot 6.5.0-44-generic #44~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue Jun 18 14:36:16 UTC 2 x86_64 x86_64 x86_64 GNU/Linux"

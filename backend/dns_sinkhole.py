@@ -1,11 +1,4 @@
-"""
-WireDown Honeypot — DNS Sinkhole Server
-=========================================
-Lightweight UDP DNS server that responds to every A-record query with a
-configurable sinkhole IP.  Parses and constructs DNS packets without any
-external DNS library.  Includes Shannon-entropy analysis of subdomains
-to detect DNS-tunnelling activity.
-"""
+# UDP DNS sinkhole with entropy-based tunnel detection
 
 import logging
 import math
@@ -18,35 +11,18 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("wiredown.dns_sinkhole")
 
-# ---------------------------------------------------------------------------
-# DNS constants
-# ---------------------------------------------------------------------------
+
 DNS_HEADER_LEN  = 12
 QTYPE_A         = 1
 QCLASS_IN       = 1
 DNS_RESPONSE_FLAGS = 0x8180  # QR=1, AA=1, RD=1, RA=1, RCODE=0 (no error)
 
-# Tunnel detection thresholds
+
 ENTROPY_THRESHOLD   = 3.5
 SUBDOMAIN_MIN_LEN   = 20
 
 
 class DNSSinkhole:
-    """
-    UDP DNS sinkhole running on a configurable port (default 5353).
-
-    Parameters
-    ----------
-    sinkhole_ip : str
-        The IPv4 address to return in every A-record answer.
-    port : int
-        UDP port to listen on (5353 avoids needing root for 53).
-    on_tunnel_detected : callable or None
-        ``callback(client_ip, domain, entropy)`` fired when a likely
-        DNS-tunnel query is spotted.
-    host : str
-        Bind address.
-    """
 
     def __init__(
         self,
@@ -65,16 +41,13 @@ class DNSSinkhole:
         self._thread: Optional[threading.Thread] = None
         self._query_log: List[Dict[str, Any]] = []
         logger.info(
-            "DNSSinkhole configured: sinkhole_ip=%s port=%d",
+            "DNS sinkhole is now active, redirecting traffic to %s on port %d",
             sinkhole_ip, port,
         )
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+
 
     def start(self) -> None:
-        """Bind the UDP socket and start serving in a background thread."""
         if self._running:
             return
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -86,10 +59,9 @@ class DNSSinkhole:
             target=self._serve_loop, daemon=True, name="dns-sinkhole",
         )
         self._thread.start()
-        logger.info("DNS sinkhole listening on %s:%d", self._host, self._port)
+        logger.info("The sinkhole is listening for queries on %s:%d", self._host, self._port)
 
     def stop(self) -> None:
-        """Shut down the sinkhole."""
         self._running = False
         if self._sock is not None:
             try:
@@ -100,26 +72,16 @@ class DNSSinkhole:
         if self._thread is not None:
             self._thread.join(timeout=5)
             self._thread = None
-        logger.info("DNS sinkhole stopped")
+        logger.info("DNS sinkhole has been shut down gracefully")
 
     def get_query_log(self) -> List[Dict[str, Any]]:
-        """Return a copy of the recent query log."""
         with self._lock:
             return list(self._query_log)
 
-    # ------------------------------------------------------------------
-    # DNS packet parsing / construction
-    # ------------------------------------------------------------------
+
 
     @staticmethod
     def _parse_domain_name(data: bytes, offset: int) -> Tuple[str, int]:
-        """
-        Parse a DNS domain name in label format starting at *offset*.
-
-        Returns ``(domain_string, new_offset)`` where *new_offset* points
-        to the byte immediately after the name's terminating zero-length
-        label or compressed pointer.
-        """
         labels: List[str] = []
         jumped = False
         original_offset = offset
@@ -131,7 +93,7 @@ class DNSSinkhole:
                 break
             length = data[offset]
 
-            # Compression pointer (top two bits set)
+
             if (length & 0xC0) == 0xC0:
                 if not jumped:
                     original_offset = offset + 2
@@ -158,12 +120,7 @@ class DNSSinkhole:
         return ".".join(labels), offset
 
     def _build_response(self, query: bytes, domain: str) -> bytes:
-        """
-        Construct a DNS response packet for the given *query* raw bytes.
 
-        Always returns a single A record pointing to ``self._sinkhole_ip``.
-        """
-        # --- Header ---
         txn_id = query[:2]
         flags = struct.pack("!H", DNS_RESPONSE_FLAGS)
         qd_count = struct.pack("!H", 1)  # 1 question
@@ -172,13 +129,11 @@ class DNSSinkhole:
         ar_count = struct.pack("!H", 0)
         header = txn_id + flags + qd_count + an_count + ns_count + ar_count
 
-        # --- Question section (copy from original query) ---
-        # Skip the 12-byte header, then re-read the question
+
         _, qname_end = self._parse_domain_name(query, DNS_HEADER_LEN)
         question = query[DNS_HEADER_LEN:qname_end + 4]  # name + qtype(2) + qclass(2)
 
-        # --- Answer section ---
-        # Name pointer to the question name at offset 0x000C
+
         answer = struct.pack("!H", 0xC00C)
         answer += struct.pack("!H", QTYPE_A)      # Type A
         answer += struct.pack("!H", QCLASS_IN)     # Class IN
@@ -189,13 +144,10 @@ class DNSSinkhole:
 
         return header + question + answer
 
-    # ------------------------------------------------------------------
-    # Entropy-based DNS tunnel detection
-    # ------------------------------------------------------------------
+
 
     @staticmethod
     def _shannon_entropy(text: str) -> float:
-        """Return the Shannon entropy (bits) of *text*."""
         if not text:
             return 0.0
         freq = Counter(text)
@@ -209,23 +161,12 @@ class DNSSinkhole:
 
     @staticmethod
     def _extract_subdomain(domain: str) -> str:
-        """
-        Return the subdomain portion of *domain*.
-
-        For ``foo.bar.example.com`` this returns ``foo.bar``.  If the
-        domain has two or fewer labels, returns the whole domain.
-        """
         parts = domain.rstrip(".").split(".")
         if len(parts) <= 2:
             return domain
         return ".".join(parts[:-2])
 
     def _check_tunnel(self, client_ip: str, domain: str) -> Optional[float]:
-        """
-        Check if *domain* looks like a DNS tunnel payload.
-
-        Returns the entropy value if flagged, otherwise ``None``.
-        """
         subdomain = self._extract_subdomain(domain)
         if len(subdomain) <= SUBDOMAIN_MIN_LEN:
             return None
@@ -234,12 +175,9 @@ class DNSSinkhole:
             return entropy
         return None
 
-    # ------------------------------------------------------------------
-    # Main loop
-    # ------------------------------------------------------------------
+
 
     def _serve_loop(self) -> None:
-        """Read UDP packets, parse, respond, and log."""
         while self._running:
             try:
                 data, addr = self._sock.recvfrom(512)
@@ -254,15 +192,15 @@ class DNSSinkhole:
             try:
                 domain, qtype = self._process_query(data, addr)
             except Exception as exc:
-                logger.debug("Malformed DNS packet from %s: %s", client_ip, exc)
+                logger.debug("Received an invalid or malformed packet from %s: %s", client_ip, exc)
                 continue
 
-            # Determine query type string
+
             qtype_str = {1: "A", 28: "AAAA", 5: "CNAME", 15: "MX",
                          2: "NS", 12: "PTR", 6: "SOA", 16: "TXT",
                          33: "SRV", 255: "ANY"}.get(qtype, str(qtype))
 
-            # Log the query
+
             entry = {
                 "client_ip": client_ip,
                 "domain": domain,
@@ -272,17 +210,17 @@ class DNSSinkhole:
 
             with self._lock:
                 self._query_log.append(entry)
-                # Bound the log at 10 000 entries
+
                 if len(self._query_log) > 10_000:
                     self._query_log = self._query_log[-5_000:]
 
-            logger.info("DNS query from %s: %s (%s)", client_ip, domain, qtype_str)
+            logger.info("Processed query from %s: %s [%s]", client_ip, domain, qtype_str)
 
-            # Tunnel detection
+
             entropy = self._check_tunnel(client_ip, domain)
             if entropy is not None:
                 logger.warning(
-                    "Possible DNS tunnel from %s — domain=%s entropy=%.2f",
+                    "Alert: Unusual query pattern from %s. Possible tunnel detected at %s (Entropy: %.2f)",
                     client_ip, domain, entropy,
                 )
                 entry["tunnel_detected"] = True
@@ -296,15 +234,14 @@ class DNSSinkhole:
 
     def _process_query(self, data: bytes,
                        addr: Tuple[str, int]) -> Tuple[str, int]:
-        """Parse the DNS query, send a response, and return (domain, qtype)."""
         if len(data) < DNS_HEADER_LEN + 5:
             raise ValueError("Packet too short")
 
-        # Parse question
+
         domain, offset = self._parse_domain_name(data, DNS_HEADER_LEN)
         qtype, _qclass = struct.unpack("!HH", data[offset:offset + 4])
 
-        # Build and send response (only respond to A-record queries with an A answer)
+
         response = self._build_response(data, domain)
         try:
             self._sock.sendto(response, addr)

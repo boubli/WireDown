@@ -1,16 +1,5 @@
-/*
- * ============================================================
- *  WireDown — ESP32 Honeypot Sensor
- *  Promiscuous-mode WiFi sniffer → WebSocket relay → isolation
- * ============================================================
- *
- *  Board:  ESP32-DevKitC (or any ESP32 with WiFi)
- *  SDK:    Arduino-ESP32  ≥ 2.0
- *  Libs:   ArduinoWebsockets  (by Gil Maimon)
- *          ArduinoJson         (by Benoît Blanchon, v6+)
- *
- *  Wiring: None — pure software.
- */
+// WireDown ESP32 sensor — promiscuous WiFi sniffer + isolation
+// Board: ESP32-DevKitC, Libs: ArduinoWebsockets, ArduinoJson
 
 #include <WiFi.h>
 #include <ArduinoWebsockets.h>
@@ -20,7 +9,7 @@
 
 using namespace websockets;
 
-/* ── Configuration ───────────────────────────────────────── */
+
 const char* WIFI_SSID      = "HoneypotNet";
 const char* WIFI_PASS      = "Tr4pN3twork!";
 const char* WS_SERVER_HOST = "192.168.4.1";
@@ -32,7 +21,7 @@ const unsigned long RECONNECT_MS      = 3000;
 const unsigned long DEDUP_WINDOW_MS   = 10000;
 const int           SNIFF_CHANNEL     = 6;
 
-/* ── Runtime state ───────────────────────────────────────── */
+
 WebsocketsClient wsClient;
 bool wsConnected = false;
 unsigned long lastHeartbeat  = 0;
@@ -47,7 +36,7 @@ const int MAX_SEEN = 128;
 SeenDevice seenDevices[MAX_SEEN];
 int seenCount = 0;
 
-/* ── Attack Detection State ─────────────────────────────── */
+
 
 /* 1. ARP Spoofing Detector */
 struct ArpMapping {
@@ -81,7 +70,7 @@ const int MAX_EAPOL_TRACKERS = 32;
 EapolTracker eapolTrackers[MAX_EAPOL_TRACKERS];
 int eapolTrackerCount = 0;
 
-/* ── Helpers ─────────────────────────────────────────────── */
+
 
 String macToString(const uint8_t* mac) {
     char buf[18];
@@ -143,7 +132,7 @@ bool isDuplicate(const uint8_t* mac) {
     return false;
 }
 
-/* ── Device Isolation ────────────────────────────────────── */
+
 
 void isolateDevice(String macAddress) {
     Serial.printf("[ISOLATION] Targeting device: %s\n", macAddress.c_str());
@@ -215,7 +204,7 @@ void isolateDevice(String macAddress) {
     }
 }
 
-/* ── Promiscuous Sniffer Callback ────────────────────────── */
+
 
 typedef struct {
     unsigned frame_ctrl:16;
@@ -239,7 +228,6 @@ void IRAM_ATTR snifferCallback(void* buf, wifi_promiscuous_pkt_type_t type) {
     uint16_t frame_ctrl = ipkt->hdr.frame_ctrl;
     int pktLen = pkt->rx_ctrl.sig_len;
 
-    /* addr2 = transmitter / source address */
     const uint8_t* srcMac = ipkt->hdr.addr2;
 
     /* ── 2. Deauth / Disassoc Flood Detection ─────────────── */
@@ -443,7 +431,7 @@ void IRAM_ATTR snifferCallback(void* buf, wifi_promiscuous_pkt_type_t type) {
     }
 }
 
-/* ── WebSocket Handlers ──────────────────────────────────── */
+
 
 void onWsMessage(WebsocketsMessage msg) {
     Serial.printf("[WS] Received: %s\n", msg.data().c_str());
@@ -508,7 +496,7 @@ void connectWebSocket() {
     wsClient.connect(url);
 }
 
-/* ── WiFi Setup ──────────────────────────────────────────── */
+
 
 void setupWiFi() {
     Serial.println("[WIFI] Initializing...");
@@ -545,7 +533,7 @@ void setupSniffer() {
     Serial.printf("[SNIFF] Listening on channel %d\n", SNIFF_CHANNEL);
 }
 
-/* ── Arduino Entry Points ────────────────────────────────── */
+
 
 void setup() {
     Serial.begin(115200);

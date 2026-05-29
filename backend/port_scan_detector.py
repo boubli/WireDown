@@ -1,11 +1,4 @@
-"""
-WireDown Honeypot — Port Scan Detector
-========================================
-Opens lightweight TCP listeners on common service ports.  Each listener
-sends a realistic service banner then closes the connection.  When a
-single source IP connects to more than 5 distinct ports within a
-10-second window the registered callback is fired.
-"""
+# honeypot port listeners + scan detection
 
 import logging
 import socket
@@ -16,9 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger("wiredown.port_scan_detector")
 
-# ---------------------------------------------------------------------------
-# Service banners
-# ---------------------------------------------------------------------------
+
 
 def _ftp_banner() -> bytes:
     return b"220 ProFTPD 1.3.8 Server ready.\r\n"
@@ -153,16 +144,6 @@ SCAN_TIME_WINDOW    = 10.0  # seconds
 
 
 class PortScanDetector:
-    """
-    Opens honeypot listeners on well-known ports and detects port scanning.
-
-    Parameters
-    ----------
-    callback : callable
-        ``callback(ip, ports_hit, timespan)`` invoked when a scan is detected.
-    host : str
-        Bind address for all listeners (default ``0.0.0.0``).
-    """
 
     def __init__(self, callback: Callable[..., Any],
                  host: str = "0.0.0.0") -> None:
@@ -181,12 +162,9 @@ class PortScanDetector:
         self._server_sockets: List[socket.socket] = []
         self._threads: List[threading.Thread] = []
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+
 
     def start(self) -> None:
-        """Bind to all configured ports and start accepting connections."""
         if self._running:
             return
         self._running = True
@@ -214,7 +192,6 @@ class PortScanDetector:
                              self._host, port, service, exc)
 
     def stop(self) -> None:
-        """Shut down all listeners gracefully."""
         self._running = False
         for srv in self._server_sockets:
             try:
@@ -228,17 +205,13 @@ class PortScanDetector:
         logger.info("PortScanDetector stopped")
 
     def get_connections(self) -> List[Dict[str, Any]]:
-        """Return a copy of the recent connection log."""
         with self._lock:
             return list(self._log)
 
-    # ------------------------------------------------------------------
-    # Internal
-    # ------------------------------------------------------------------
+
 
     def _accept_loop(self, srv: socket.socket, port: int,
                      service: str, banner_fn: Callable[[], bytes]) -> None:
-        """Accept connections on *srv*, send banner, record the hit."""
         while self._running:
             try:
                 client, addr = srv.accept()
@@ -257,7 +230,6 @@ class PortScanDetector:
 
     def _handle_client(self, client: socket.socket, ip: str, port: int,
                        service: str, banner_fn: Callable[[], bytes]) -> None:
-        """Send banner, close socket, record connection."""
         now = time.time()
         try:
             client.settimeout(3)

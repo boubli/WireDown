@@ -1,10 +1,4 @@
-"""
-WireDown Honeypot — Multi-Factor Threat Score Engine
-=====================================================
-Maintains per-device threat scores based on weighted security signals.
-Scores decay over time to avoid permanent blacklisting of devices that
-have stopped exhibiting malicious behaviour.
-"""
+# per-device threat scoring with time decay
 
 import logging
 import threading
@@ -14,9 +8,7 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("wiredown.threat_engine")
 
-# ---------------------------------------------------------------------------
-# Signal weight table — higher weight = more malicious intent indicated
-# ---------------------------------------------------------------------------
+
 SIGNAL_WEIGHTS: Dict[str, int] = {
     "xz_backdoor":          80,
     "krack_attack":         60,
@@ -40,7 +32,6 @@ DECAY_INTERVAL = 300    # seconds (5 minutes)
 
 
 class ThreatEngine:
-    """Thread-safe, per-device threat scoring engine with time-based decay."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -48,14 +39,11 @@ class ThreatEngine:
         self._devices: Dict[str, Dict[str, Any]] = {}
         self._running = False
         self._decay_thread: Optional[threading.Thread] = None
-        logger.info("ThreatEngine initialised")
 
-    # ------------------------------------------------------------------
-    # Lifecycle
-    # ------------------------------------------------------------------
+
+
 
     def start(self) -> None:
-        """Start the background decay thread."""
         if self._running:
             return
         self._running = True
@@ -67,36 +55,16 @@ class ThreatEngine:
                      DECAY_INTERVAL, DECAY_POINTS)
 
     def stop(self) -> None:
-        """Signal the decay thread to stop."""
         self._running = False
         if self._decay_thread is not None:
             self._decay_thread.join(timeout=5)
             self._decay_thread = None
         logger.info("ThreatEngine stopped")
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+
 
     def record_signal(self, mac: str, signal_type: str,
                       details: Optional[Dict[str, Any]] = None) -> int:
-        """
-        Record a security signal for *mac*.
-
-        Parameters
-        ----------
-        mac : str
-            Device MAC address (or any unique identifier).
-        signal_type : str
-            One of the keys in ``SIGNAL_WEIGHTS``.
-        details : dict, optional
-            Arbitrary context to store alongside the signal.
-
-        Returns
-        -------
-        int
-            The device's updated threat score.
-        """
         if details is None:
             details = {}
 
@@ -140,7 +108,6 @@ class ThreatEngine:
         return new_score
 
     def get_score(self, mac: str) -> int:
-        """Return the current threat score for *mac* (0 if unknown)."""
         with self._lock:
             device = self._devices.get(mac)
             if device is None:
@@ -148,21 +115,9 @@ class ThreatEngine:
             return device["score"]
 
     def get_status(self, mac: str) -> str:
-        """
-        Return a human-readable classification for *mac*.
-
-        * ``'safe'``       — score < 30
-        * ``'suspicious'`` — 30 ≤ score < 60
-        * ``'attacker'``   — score ≥ 60
-        """
         return self._classify(self.get_score(mac))
 
     def get_all_threats(self) -> List[Dict[str, Any]]:
-        """
-        Return every tracked device sorted by descending score.
-
-        Each entry: ``{mac, score, status, signal_count, first_seen, last_updated}``
-        """
         with self._lock:
             result = []
             for mac, dev in self._devices.items():
@@ -179,11 +134,6 @@ class ThreatEngine:
         return result
 
     def get_device_report(self, mac: str) -> Optional[Dict[str, Any]]:
-        """
-        Return the full signal history and metadata for *mac*.
-
-        Returns ``None`` if the device has never been seen.
-        """
         with self._lock:
             device = self._devices.get(mac)
             if device is None:
@@ -198,9 +148,7 @@ class ThreatEngine:
                 "last_updated": device["last_updated"],
             }
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
+
 
     @staticmethod
     def _classify(score: int) -> str:
@@ -211,7 +159,6 @@ class ThreatEngine:
         return "safe"
 
     def _decay_loop(self) -> None:
-        """Background loop that reduces stale scores every ``DECAY_INTERVAL``."""
         logger.debug("Decay loop running")
         while self._running:
             time.sleep(1)  # wake up every second to check _running flag
@@ -221,7 +168,7 @@ class ThreatEngine:
                     elapsed = now - device["last_updated"]
                     if elapsed < DECAY_INTERVAL:
                         continue
-                    # Calculate how many full intervals have elapsed
+
                     intervals = int(elapsed // DECAY_INTERVAL)
                     decay_total = intervals * DECAY_POINTS
                     old_score = device["score"]
@@ -230,7 +177,7 @@ class ThreatEngine:
                     new_score = max(0, old_score - decay_total)
                     if new_score != old_score:
                         device["score"] = new_score
-                        # Advance the baseline so we don't re-decay
+
                         device["last_updated"] = now
                         logger.debug(
                             "Decay: %s %d → %d (-%d over %d intervals)",

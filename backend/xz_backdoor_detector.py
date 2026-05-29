@@ -1,12 +1,7 @@
 """
-# xz backdoor detector (CVE-2024-3094)
-# Hooks into FakeSSH to catch XZ exploit probes.
-#
-# Checks:
-# 1. RSA cert algorithms
-# 2. RSA modulus entropy (payloads look weird)
-# 3. Timing (Ed448 takes time)
-# 4. Command history
+# CVE-2024-3094 XZ Utils backdoor exploit detector
+# Hooks into the FakeSSH server to detect SSH handshake anomalies
+# and post-auth liblzma/xz reconnaissance.
 """
 
 import logging
@@ -15,11 +10,11 @@ import threading
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Callable, Optional
+from typing import Callable, Optional, List, Dict, Any
 
 log = logging.getLogger("wiredown.xz_detector")
 
-# Severity levels (TODO: Maybe just use an enum instead of strings?)
+# Severity levels
 SEVERITY_LOW = "low"
 SEVERITY_MEDIUM = "medium"
 SEVERITY_HIGH = "high"
@@ -413,15 +408,14 @@ class XZBackdoorDetector:
 
     # Indicator Retrieval
 
-    def get_indicators(self, client_ip: Optional[str] = None) -> list[dict]:
+    def get_indicators(self, client_ip: str) -> List[Dict[str, Any]]:
         """
         Return all CVE-2024-3094 indicators of compromise.
 
         Parameters
         ----------
-        client_ip : str, optional
+        client_ip : str
             If provided, return only indicators for this IP.
-            Otherwise, return all indicators across all IPs.
 
         Returns
         -------
@@ -487,7 +481,7 @@ class XZBackdoorDetector:
         return {ip: self.get_client_risk_score(ip) for ip in ips}
 
     @staticmethod
-    def shannon_entropy(data: bytes) -> float:
+    def _shannon_entropy(data: bytes) -> float:
         """
         Calculate Shannon entropy of a byte sequence.
 

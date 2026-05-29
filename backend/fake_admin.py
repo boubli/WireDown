@@ -341,12 +341,7 @@ def register_admin_panel(
     """
     Register the fake admin panel blueprint with a Flask app.
 
-    Parameters
-    ----------
-    app : Flask
-        The Flask application instance.
-    on_credential_captured : callable, optional
-        Callback ``on_credential_captured(ip, username, password, user_agent)``
+    Parameters# fake router admin panel — captures creds and logs everything  Callback ``on_credential_captured(ip, username, password, user_agent)``
         invoked whenever credentials are submitted.
     on_page_access : callable, optional
         Callback ``on_page_access(access_entry_dict)`` invoked on

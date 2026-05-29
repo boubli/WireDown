@@ -5,7 +5,7 @@
 
 <br />
 
-WireDown is a Wi-Fi honeypot and network tarpit. It uses an ESP32 to sniff 802.11 frames and a Python backend to sinkhole DNS, fake SSH/Admin interfaces, and monitor for CVE-2024-3094. It also has a zero-gravity UI using Matter.js to visualize the network state.
+WireDown is a Wi-Fi honeypot and network tarpit. It uses an ESP32 to sniff 802.11 frames and a Python backend to sinkhole DNS, fake SSH/Admin interfaces, and monitor for CVE-2024-3094. It also has a physics-based UI using Matter.js to visualize the network state.
 
 ## Table of Contents
 - [Architecture](#architecture)
@@ -79,4 +79,4 @@ docker compose up -d
 Flash `esp32_sensor/esp32_sensor.ino` to an ESP32. Set your WiFi credentials and backend IP.
 
 ## Disclaimer
-Only run on networks you own. Active response modules are illegal to run on public networks. I'm not responsible for what you do with this.
+Do not run this on networks you don't own. The active response modules (like deauth) will break things and are illegal on public networks. I am not responsible for your actions.
