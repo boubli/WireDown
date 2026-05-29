@@ -1,5 +1,4 @@
-# backend hub for WireDown
-# glues the ESP32 to the frontend and runs the security modules.
+# backend hub — glues ESP32, frontend, and security modules together
 
 import os
 import json
@@ -20,18 +19,20 @@ from fake_ssh import FakeSSHServer
 from xz_backdoor_detector import XZBackdoorDetector
 from fake_admin import register_admin_panel
 
-# WebSocket namespace constants
 WS_NS_FRONTEND = "/ws/frontend"
 WS_NS_ESP32 = "/ws/esp32"
 
-# App Setup
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.urandom(32).hex()
-CORS(app, resources={r"/*": {"origins": "*"}})
+app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY") or os.urandom(32).hex()
+
+# CORS — default to wildcard since this is a LAN appliance.
+# Set CORS_ORIGINS in .env to lock it down if you want.
+cors_origins = os.environ.get("CORS_ORIGINS", "*")
+CORS(app, resources={r"/*": {"origins": cors_origins}})
 
 socketio = SocketIO(
     app,
-    cors_allowed_origins="*",
+    cors_allowed_origins=cors_origins,
     async_mode="threading",
     ping_timeout=30,
     ping_interval=10,
@@ -46,18 +47,15 @@ logging.basicConfig(
 )
 log = logging.getLogger("wiredown")
 
-# In-Memory State
-esp32_sid = None                          # Socket.IO session id of the ESP32
-devices: OrderedDict[str, dict] = OrderedDict()   # mac → device info
-isolation_log: list[dict] = []            # audit trail
+esp32_sid = None
+devices: OrderedDict[str, dict] = OrderedDict()
+isolation_log: list[dict] = []
 stats = {
     "devices_seen": 0,
     "isolations_triggered": 0,
     "esp32_connected": False,
     "uptime_start": time.time(),
 }
-
-# Security Modules
 
 threat_engine = ThreatEngine()
 bandwidth_throttle = BandwidthThrottle()
@@ -103,14 +101,12 @@ register_admin_panel(
     on_credential_captured=lambda ip, user, pw, ua: on_threat_signal(ip, "admin_login_attempt", {"user": user, "password": pw})
 )
 
-# Helpers
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def register_device(mac: str, rssi: int = 0, channel: int = 0) -> dict:
-    """Add or update a device in the registry."""
     if mac not in devices:
         devices[mac] = {
             "mac": mac,
@@ -118,7 +114,7 @@ def register_device(mac: str, rssi: int = 0, channel: int = 0) -> dict:
             "channel": channel,
             "first_seen": now_iso(),
             "last_seen": now_iso(),
-            "status": "active",          # active | isolated | destroyed
+            "status": "active",
             "is_attacker": False,
         }
         stats["devices_seen"] += 1
@@ -130,7 +126,7 @@ def register_device(mac: str, rssi: int = 0, channel: int = 0) -> dict:
     return devices[mac]
 
 
-# HTTP Routes
+# --- HTTP ---
 
 @app.route("/", methods=["GET"])
 def index():
@@ -174,7 +170,61 @@ def api_isolation_log():
     return jsonify(isolation_log[-100:])
 
 
-# WebSocket: ESP32 Channel
+# --- ESP32 config + flash endpoints ---
+
+@app.route("/api/esp32/configure", methods=["POST"])
+def api_esp32_configure():
+    """Accept WiFi creds + backend IP, write a modified .ino."""
+    from esp32_flasher import configure_ino
+    data = request.get_json(silent=True) or {}
+    ssid = data.get("ssid", "").strip()
+    password = data.get("password", "").strip()
+    backend_ip = data.get("backend_ip", "").strip()
+
+    if not all([ssid, password, backend_ip]):
+        return jsonify({"status": "error", "message": "ssid, password, and backend_ip are required"}), 400
+
+    try:
+        path = configure_ino(ssid, password, backend_ip)
+        return jsonify({"status": "ok", "message": "ino configured", "path": path})
+    except Exception as exc:
+        log.error("ESP32 configure failed: %s", exc)
+        return jsonify({"status": "error", "message": str(exc)}), 500
+
+
+@app.route("/api/esp32/flash", methods=["POST"])
+def api_esp32_flash():
+    """Compile and flash the configured .ino to a connected ESP32."""
+    from esp32_flasher import compile_and_flash, detect_esp32_port
+    data = request.get_json(silent=True) or {}
+    port = data.get("port") or detect_esp32_port() or "/dev/ttyUSB0"
+
+    try:
+        result = compile_and_flash(port=port)
+        return jsonify(result)
+    except Exception as exc:
+        log.error("ESP32 flash failed: %s", exc)
+        return jsonify({"status": "error", "message": str(exc)}), 500
+
+
+@app.route("/api/esp32/status", methods=["GET"])
+def api_esp32_status():
+    """Return current flash process status."""
+    from esp32_flasher import get_flash_status
+    return jsonify(get_flash_status())
+
+
+@app.route("/api/esp32/detect", methods=["GET"])
+def api_esp32_detect():
+    """Auto-detect connected ESP32 port."""
+    from esp32_flasher import detect_esp32_port
+    port = detect_esp32_port()
+    if port:
+        return jsonify({"status": "ok", "port": port})
+    return jsonify({"status": "not_found", "port": None}), 404
+
+
+# --- WebSocket: ESP32 ---
 
 @socketio.on("connect", namespace=WS_NS_ESP32)
 def esp32_connect():
@@ -197,7 +247,6 @@ def esp32_disconnect():
 
 @socketio.on("message", namespace=WS_NS_ESP32)
 def esp32_message(raw):
-    """Handle all JSON messages from ESP32."""
     try:
         data = json.loads(raw) if isinstance(raw, str) else raw
     except json.JSONDecodeError:
@@ -236,7 +285,7 @@ def esp32_message(raw):
         log.warning("Unknown ESP32 message type: %s", msg_type)
 
 
-# WebSocket: Frontend Channel
+# --- WebSocket: Frontend ---
 
 @socketio.on("connect", namespace=WS_NS_FRONTEND)
 def frontend_connect():
@@ -259,10 +308,7 @@ def frontend_disconnect():
 
 @socketio.on("execute_isolation", namespace=WS_NS_FRONTEND)
 def frontend_execute_isolation(data):
-    """
-    Receive an isolation command from the Frontend AI Agent
-    and relay it to the ESP32.
-    """
+    """Relay isolation command from Frontend AI Agent to ESP32."""
     mac = data.get("mac", "")
     reason = data.get("reason", "AI Agent flagged as attacker")
 
@@ -318,7 +364,7 @@ def frontend_flag_attacker(data):
 
 @socketio.on("simulate_device", namespace=WS_NS_FRONTEND)
 def frontend_simulate_device(data):
-    """Let the frontend spawn a fake device for testing."""
+    """Spawn a fake device for testing."""
     import random
     mac = data.get("mac") or "DE:AD:{:02X}:{:02X}:{:02X}:{:02X}".format(
         random.randint(0, 255), random.randint(0, 255),
@@ -331,14 +377,8 @@ def frontend_simulate_device(data):
     log.info("Simulated device spawned: %s", mac)
 
 
-# Entry Point
-
 if __name__ == "__main__":
-    log.info("╔══════════════════════════════════════╗")
-    log.info("║   WireDown Backend — Starting...     ║")
-    log.info("╚══════════════════════════════════════╝")
-    log.info("Dashboard:  http://localhost:5000")
-    log.info("Warning:    http://localhost:5000/warning")
+    log.info("WireDown backend starting")
 
     dns_sinkhole.start()
     port_scan_detector.start()

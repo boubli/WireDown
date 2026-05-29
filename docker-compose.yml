@@ -5,10 +5,15 @@ services:
     build:
       context: ./backend
     container_name: wiredown-backend
+    env_file:
+      - .env
     ports:
       - "5000:5000"
       - "2222:2222"
       - "5353:5353/udp"
+    # needed for ESP32 flashing if USB is passed through
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
     restart: unless-stopped
     networks:
       - wiredown-net
