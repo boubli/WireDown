@@ -133,23 +133,13 @@ def _init_fs():
 _init_fs()
 
 
-# Ensure keys exist
+# Ensure proper server host key exists
 def _ensure_keys():
-    FS_DIR.mkdir(parents=True, exist_ok=True)
-    ssh_dir = FS_DIR / ".ssh"
-    ssh_dir.mkdir(exist_ok=True)
-    rsa_key = ssh_dir / "id_rsa"
-    ed25519_key = ssh_dir / "id_ed25519"
-    
-    if not rsa_key.exists():
-        log.info("Generating new RSA host key...")
+    key_path = FS_DIR / 'wiredown_ssh_host.key'
+    if not key_path.exists():
+        log.info("Generating new RSA host key for the server...")
         key = asyncssh.generate_private_key('ssh-rsa', key_size=2048)
-        key.write_private_key(str(rsa_key))
-        
-    if not ed25519_key.exists():
-        log.info("Generating new Ed25519 host key...")
-        key = asyncssh.generate_private_key('ssh-ed25519')
-        key.write_private_key(str(ed25519_key))
+        key.write_private_key(str(key_path))
 
 _ensure_keys()
 
@@ -383,7 +373,7 @@ class FakeSSHServer:
             lambda: ServerFactory(self),
             self.host,
             self.port,
-            server_host_keys=[str(FS_DIR / ".ssh" / "id_rsa"), str(FS_DIR / ".ssh" / "id_ed25519")],
+            server_host_keys=[str(FS_DIR / "wiredown_ssh_host.key")],
             process_factory=process_factory
         )
         addrs = ", ".join(str(s.getsockname()) for s in self._server.sockets)
