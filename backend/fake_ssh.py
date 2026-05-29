@@ -314,24 +314,14 @@ class FakeSSHServer:
             self._loop.close()
 
     async def _start_server(self) -> None:
-        def process_factory(process):
-            peer = process.get_extra_info('peername')
-            client_ip = peer[0] if peer else "unknown"
-            client_port = peer[1] if peer else 0
-            session_id = str(uuid.uuid4())
-            session_model = FakeSSHSession(session_id, client_ip, client_port)
-            with self._lock:
-                self._sessions[session_id] = session_model
-            
-            session_model.username = process.get_extra_info('username') or "root"
-            return HoneypotSession(self, session_model)
-
         class ServerFactory(asyncssh.SSHServer):
             def __init__(self, server_instance):
                 self.server_instance = server_instance
                 self.session_id = str(uuid.uuid4())
                 self.client_ip = "unknown"
                 self.client_port = 0
+                self.username = "root"
+                self.password = None
                 
             def connection_made(self, conn):
                 peer = conn.get_extra_info('peername')
@@ -351,12 +341,17 @@ class FakeSSHServer:
                 log.info("Client %s disconnected", self.client_ip)
                 
             def begin_auth(self, username):
-                return True
+                # Return False to require authentication (forces password prompt)
+                self.username = username
+                return False
                 
             def password_auth_supported(self):
                 return True
                 
             def validate_password(self, username, password):
+                self.username = username
+                self.password = password
+                
                 self.server_instance._emit_event({
                     "type": "ssh_auth",
                     "client_ip": self.client_ip,
@@ -366,15 +361,24 @@ class FakeSSHServer:
                     "password": password,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
-                log.info("SSH auth: %s:%s from %s", username, password, self.client_ip)
+                log.warning("[ALERT] SSH Login Attempt captured -> User: %s | Pass: %s", username, password)
+                
+                # Return True to drop them into the interactive fake shell
                 return True
+
+            def session_requested(self):
+                session_model = FakeSSHSession(self.session_id, self.client_ip, self.client_port)
+                session_model.username = self.username
+                session_model.password = self.password
+                with self.server_instance._lock:
+                    self.server_instance._sessions[self.session_id] = session_model
+                return HoneypotSession(self.server_instance, session_model)
 
         self._server = await asyncssh.create_server(
             lambda: ServerFactory(self),
             self.host,
             self.port,
-            server_host_keys=[str(FS_DIR / "wiredown_ssh_host.key")],
-            process_factory=process_factory
+            server_host_keys=[str(FS_DIR / "wiredown_ssh_host.key")]
         )
         addrs = ", ".join(str(s.getsockname()) for s in self._server.sockets)
         log.info("FakeSSH listening on %s (asyncssh)", addrs)
