@@ -288,8 +288,7 @@ class FakeSSHServer:
             lambda: WireDownSSHServer(self),
             self.host,
             self.port,
-            server_host_keys=[str(FS_DIR / "wiredown_ssh_host.key")],
-            password_auth_supported=True
+            server_host_keys=[str(FS_DIR / "wiredown_ssh_host.key")]
         )
         addrs = ", ".join(str(s.getsockname()) for s in self._server.sockets)
         log.info("FakeSSH listening on %s (asyncssh)", addrs)
@@ -720,8 +719,7 @@ if __name__ == '__main__':
             lambda: WireDownSSHServer(dummy_instance), 
             '', 
             2222, 
-            server_host_keys=[key_path],
-            password_auth_supported=True
+            server_host_keys=[key_path]
         )
 
     loop = asyncio.get_event_loop()
