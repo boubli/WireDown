@@ -56,6 +56,16 @@ echo -e "${CYAN}[*] Enabling Snippets on 'local' storage for Cloud-Init...${NC}"
 pvesm set local --content backup,iso,vztmpl,snippets || true
 mkdir -p /var/lib/vz/snippets
 
+echo -e "${CYAN}[*] Checking for ESP32 on USB...${NC}"
+ESP_USB=$(lsusb | grep -iE 'CP210|CH340|QinHeng|Silicon Labs' | head -n 1 | awk '{print $6}')
+if [ -n "$ESP_USB" ]; then
+    echo -e "${GREEN}[+] ESP32 detected ($ESP_USB)! Will configure auto-passthrough.${NC}"
+    SED_CMD="sed -i 's|# devices:|devices:|g' docker-compose.yml && sed -i 's|#   - /dev/ttyUSB0:/dev/ttyUSB0|  - /dev/ttyUSB0:/dev/ttyUSB0|g' docker-compose.yml"
+else
+    echo -e "${YELLOW}[!] No ESP32 detected on USB. You can plug it in and configure it later.${NC}"
+    SED_CMD="true"
+fi
+
 echo -e "${CYAN}[*] Generating Cloud-Init Automation Snippet...${NC}"
 cat <<EOF > /var/lib/vz/snippets/wiredown-cloud-init-$ID.yml
 #cloud-config
@@ -69,6 +79,7 @@ runcmd:
   - git clone https://github.com/boubli/WireDown.git /opt/wiredown
   - cd /opt/wiredown
   - cp .env.example .env
+  - $SED_CMD
   - docker compose up -d
   - systemctl enable --now qemu-guest-agent
   - sh -c "IP=\\\$(hostname -I | awk '{print \\\$1}'); echo -e '\\n======================================================\\n  WireDown Zero-Gravity Honeypot\\n======================================================\\nDashboard URL: http://\\\$IP:8080\\nBackend API:   http://\\\$IP:5000\\nSSH Honeypot:  ssh root@\\\$IP -p 2222\\n\\nTo view logs:  cd /opt/wiredown && docker compose logs -f\\n======================================================\\n' > /etc/motd"
@@ -89,6 +100,10 @@ qm set $ID --agent enabled=1 >/dev/null
 qm set $ID --ipconfig0 ip=dhcp >/dev/null
 qm set $ID --cicustom "user=local:snippets/wiredown-cloud-init-$ID.yml" >/dev/null
 qm resize $ID scsi0 ${DISK}G >/dev/null
+
+if [ -n "$ESP_USB" ]; then
+    qm set $ID -usb0 host=$ESP_USB >/dev/null
+fi
 
 echo -e "${CYAN}[*] Starting VM $ID...${NC}"
 qm start $ID

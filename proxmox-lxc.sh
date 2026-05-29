@@ -61,8 +61,19 @@ pct create $ID local:vztmpl/${TEMPLATE##*/} \
     --rootfs local-lvm:$DISK \
     --net0 name=eth0,bridge=$BRIDGE,ip=dhcp \
     --features nesting=1,keyctl=1 \
-    --unprivileged 1 \
+    --unprivileged 0 \
     --password wiredown
+
+echo -e "${CYAN}[*] Checking for ESP32 on USB...${NC}"
+if [ -e /dev/ttyUSB0 ]; then
+    echo -e "${GREEN}[+] ESP32 detected on /dev/ttyUSB0! Configuring auto-passthrough...${NC}"
+    echo "lxc.cgroup2.devices.allow: c 188:* rwm" >> /etc/pve/lxc/$ID.conf
+    echo "lxc.mount.entry: /dev/ttyUSB0 dev/ttyUSB0 none bind,optional,create=file" >> /etc/pve/lxc/$ID.conf
+    UNCOMMENT_USB=1
+else
+    echo -e "${YELLOW}[!] No ESP32 detected on /dev/ttyUSB0. You can plug it in and configure it later.${NC}"
+    UNCOMMENT_USB=0
+fi
 
 echo -e "${CYAN}[*] Starting Container $ID...${NC}"
 pct start $ID
@@ -73,7 +84,12 @@ pct exec $ID -- bash -c "while ! ping -c 1 -W 1 8.8.8.8 >/dev/null; do sleep 1; 
 
 echo -e "${CYAN}[*] Installing Docker and WireDown inside LXC...${NC}"
 pct exec $ID -- bash -c "apt-get update && apt-get install -y curl git && curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh"
-pct exec $ID -- bash -c "git clone https://github.com/boubli/WireDown.git /opt/wiredown && cd /opt/wiredown && cp .env.example .env && docker compose up -d"
+pct exec $ID -- bash -c "git clone https://github.com/boubli/WireDown.git /opt/wiredown && cd /opt/wiredown && cp .env.example .env"
+if [ "$UNCOMMENT_USB" -eq 1 ]; then
+    pct exec $ID -- bash -c "sed -i 's|# devices:|devices:|g' /opt/wiredown/docker-compose.yml"
+    pct exec $ID -- bash -c "sed -i 's|#   - /dev/ttyUSB0:/dev/ttyUSB0|  - /dev/ttyUSB0:/dev/ttyUSB0|g' /opt/wiredown/docker-compose.yml"
+fi
+pct exec $ID -- bash -c "cd /opt/wiredown && docker compose up -d"
 
 echo -e "${CYAN}[*] Retrieving IP Address...${NC}"
 IP=$(pct exec $ID -- ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
