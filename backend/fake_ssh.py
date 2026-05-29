@@ -129,6 +129,12 @@ def _init_fs():
         (FS_DIR / ".ssh" / "id_rsa").write_text(DEFAULT_RSA_KEY)
     if not (FS_DIR / "passwd").exists():
         (FS_DIR / "passwd").write_text(DEFAULT_PASSWD)
+    if not (FS_DIR / "passwords.bak").exists():
+        (FS_DIR / "passwords.bak").write_text("ENCRYPTED_BACKUP=true\nLAST_ROTATED=2024-05-12\n")
+    if not (FS_DIR / "wallet.dat").exists():
+        (FS_DIR / "wallet.dat").write_text("WALLET_VERSION=2\nCHECKSUM=deadbeefcafebabe\n")
+    if not (FS_DIR / "vpn_config.ovpn").exists():
+        (FS_DIR / "vpn_config.ovpn").write_text("client\nremote 10.0.0.1 1194\nproto udp\n")
 
 # Initialize on module load
 _init_fs()
@@ -191,6 +197,10 @@ class WireDownDecoySession(asyncssh.SSHServerSession):
         self._chan = None
         self._warning_triggered = False
         self._idle_task = None
+        self._miner_task = None
+        self._cmd_count = 0
+        self._lag_time = 2
+        self._rm_trap = False
 
     def connection_made(self, chan):
         self._chan = chan
@@ -199,9 +209,25 @@ class WireDownDecoySession(asyncssh.SSHServerSession):
         self._chan.write("Last login: Fri May 29 11:30:22 2026 from 192.168.8.2\r\n")
         self._chan.write(f"{self._username}@wiredown-sensor:~$ ")
 
-        # Schedule the 5-second idle geolocation / warning trigger
+        # Immediate geo-IP lookup and warning on login
         loop = asyncio.get_event_loop()
-        self._idle_task = loop.call_later(5, self._trigger_warning_if_idle)
+        self._warning_triggered = True
+        loop.run_in_executor(None, self._fetch_geoip_and_warn)
+        
+        # Start background Monero miner syslog announcements every 15 seconds
+        self._schedule_miner_log(15)
+
+    def _schedule_miner_log(self, delay):
+        loop = asyncio.get_event_loop()
+        self._miner_task = loop.call_later(delay, self._emit_miner_log)
+
+    def _emit_miner_log(self):
+        if self._chan and not self._chan.is_closing():
+            import random
+            progress = random.randint(10, 99)
+            self._chan.write(f"\r\n[Syslog] Monero miner process stealing attacker CPU cycles... {progress}% complete.\r\n")
+            self._chan.write(f"{self._username}@wiredown-sensor:~$ ")
+            self._schedule_miner_log(15)
 
     def _trigger_warning_if_idle(self):
         if not self._warning_triggered:
@@ -221,39 +247,65 @@ class WireDownDecoySession(asyncssh.SSHServerSession):
                 data = json.loads(response.read().decode('utf-8'))
                 city = data.get('city', 'Unknown')
                 country = data.get('country', 'Unknown')
-                isp = data.get('isp', 'Unknown')
         except Exception:
-            city, country, isp = 'Unknown', 'Unknown', 'Unknown'
+            city, country = 'Unknown', 'Unknown'
 
         # Compute Virtual MAC Address
         ip_hash = hashlib.md5(self.client_ip.encode('utf-8')).hexdigest()
         virtual_mac = f"02:00:00:{ip_hash[0:2]}:{ip_hash[2:4]}:{ip_hash[4:6]}".upper()
 
-        # Send direct terminal warnings
+        # Send direct terminal warning
         warning = (
             f"\r\n\r\n"
-            f"\033[1;31m[CRITICAL ALERT] SECURITY BREACH DETECTED BY WIRE_DOWN ACTIVE SENSOR.\033[0m\r\n"
-            f"\033[1;33m[TRACKING]:\033[0m Attacker IP: {self.client_ip} | Virtual MAC: {virtual_mac}\r\n"
-            f"\033[1;33m[LOCATION]:\033[0m Proximate Location Captured: {city}, {country} via ISP: {isp}\r\n"
-            f"\033[1;33m[ACTION]:\033[0m Counter-surveillance protocols initiated. Session isolated.\r\n\r\n"
+            f"[SYSTEM COMPROMISED]. REVERSE TRACKING INITIATED. "
+            f"Attacker IP: {self.client_ip}, Location: {city}, {country}. "
+            f"Law enforcement API notified.\r\n\r\n"
         )
-        self._chan.write(warning)
-        self._chan.write(f"{self._username}@wiredown-sensor:~$ ")
+        if self._chan and not self._chan.is_closing():
+            self._chan.write(warning)
+            self._chan.write(f"{self._username}@wiredown-sensor:~$ ")
 
     def data_received(self, data, datatype):
         try:
-            command = data.decode('utf-8').strip()
+            raw_text = data.decode('utf-8', errors='replace')
         except Exception:
-            command = str(data).strip()
+            raw_text = str(data)
+
+        # Broadcast every keystroke to the frontend
+        self.server_instance._emit_event({
+            "type": "ssh_keystroke",
+            "client_ip": self.client_ip,
+            "client_port": self.client_port,
+            "session_id": self.session_id,
+            "username": self._username,
+            "data": raw_text,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+        command = raw_text.strip()
+
+        # Infinite loop trap for rm
+        if self._rm_trap:
+            self._cmd_count += 1
+            if self._cmd_count >= 10:
+                self._terminate_connection()
+                return
+            current_lag = self._lag_time
+            self._lag_time *= 2
+
+            loop = asyncio.get_event_loop()
+            loop.create_task(self._delayed_rm_prompt(current_lag, initial=False))
+            return
 
         if not command:
             self._chan.write(f"\r\n{self._username}@wiredown-sensor:~$ ")
             return
 
-        print(f"[COUNTER-ATTACK] Hacker executed command in honeypot: '{command}'", flush=True)
+        self._cmd_count += 1
 
+        # Broadcast event to backend/frontend with threat score increment +50
         self.server_instance._emit_event({
-            "type": "ssh_command",
+            "type": "ssh_activity",
             "client_ip": self.client_ip,
             "client_port": self.client_port,
             "session_id": self.session_id,
@@ -262,8 +314,13 @@ class WireDownDecoySession(asyncssh.SSHServerSession):
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
-        # Trigger warnings on sensitive commands
-        is_sensitive = command in ("ifconfig", "ip a", "whoami", "netstat", "ip addr", "ip")
+        # Check Auto-Blacklist after 10 commands
+        if self._cmd_count >= 10:
+            self._terminate_connection()
+            return
+
+        # Trigger warning if sensitive network command
+        is_sensitive = any(c in command for c in ("ifconfig", "ip a", "whoami", "netstat", "ip addr", "ip"))
         if is_sensitive and not self._warning_triggered:
             self._warning_triggered = True
             if self._idle_task:
@@ -271,22 +328,93 @@ class WireDownDecoySession(asyncssh.SSHServerSession):
             loop = asyncio.get_event_loop()
             loop.run_in_executor(None, self._fetch_geoip_and_warn)
 
-        # TARPIT COUNTER-ATTACK: Delay processing by 5 seconds using the asyncio event loop to paralyze them
+        # Trigger rm trap
+        if command.startswith("rm"):
+            self._rm_trap = True
+            current_lag = self._lag_time
+            self._lag_time *= 2
+            loop = asyncio.get_event_loop()
+            loop.create_task(self._delayed_rm_prompt(current_lag, initial=True))
+            return
+
+        import random
+        # Calculate current lag time and double it
+        current_lag = self._lag_time
+        self._lag_time *= 2
+
+        # Non-blocking lag tarpit
         loop = asyncio.get_event_loop()
-        loop.call_later(5, self._execute_and_respond, command)
+        scramble = random.random() < 0.25
+        if scramble:
+            loop.create_task(self._delayed_scramble(command, current_lag))
+        else:
+            loop.create_task(self._delayed_execute(command, current_lag))
+
+    def _terminate_connection(self):
+        if self._chan and not self._chan.is_closing():
+            self._chan.write("\r\n[Connection Terminated by Proxmox Kernel Shield]\r\n")
+        if self._miner_task:
+            self._miner_task.cancel()
+        if self._chan:
+            self._chan.exit(0)
+
+    async def _delayed_execute(self, command: str, delay: float):
+        await asyncio.sleep(delay)
+        self._execute_and_respond(command)
+
+    async def _delayed_scramble(self, command: str, delay: float):
+        await asyncio.sleep(delay)
+        if self._chan and not self._chan.is_closing():
+            scrambled = "".join(reversed(command))
+            self._chan.write(f"\r\nbash: {scrambled}: command not found\r\n")
+            self._chan.write(f"{self._username}@wiredown-sensor:~$ ")
+
+    async def _delayed_rm_prompt(self, delay: float, initial: bool):
+        await asyncio.sleep(delay)
+        if self._chan and not self._chan.is_closing():
+            if initial:
+                self._chan.write("\r\nAre you sure? (y/n) ")
+            else:
+                self._chan.write("\r\nVerifying with master node... Are you absolutely sure? (y/n) ")
 
     def _execute_and_respond(self, command):
         if command == "exit":
+            if self._miner_task:
+                self._miner_task.cancel()
             self._chan.exit(0)
             return
 
-        # Handle simulated command responses
-        if command == "whoami":
-            output = "\r\nroot\r\n"
+        output = ""
+        # 16. Strict hardcoded matching only, no real shell executions
+        if command == "ls":
+            output = (
+                f"\r\n"
+                f"[Background Process] Accessing /dev/video0... Capturing attacker face profile...\r\n"
+                f"wallet.dat  passwords.bak  vpn_config.ovpn\r\n"
+            )
+        elif command == "whoami":
+            output = "\r\n" + "\r\n".join("DUMPING KERNEL MEMORY TO SECURE SERVER..." for _ in range(50)) + "\r\n"
+        elif command in ("cd /", "mysql"):
+            output = "\r\nIntrusion detected. Initiating irreversible wipe of attacker's local drive mapping.\r\n"
+        elif command == "sudo -i":
+            output = "\r\nRoot access granted. Honeypot self-destruct sequence armed. T-Minus 10 seconds...\r\n"
+        elif command.startswith("cat vpn_config.ovpn"):
+            output = "\r\n[Alert] Canary Token triggered. Target MAC address locked.\r\n"
+        elif command.startswith("cat passwords.bak"):
+            # Stream infinite zeroes
+            loop = asyncio.get_event_loop()
+            loop.create_task(self._stream_infinite_zeroes())
+            return
+        elif command.startswith("cat"):
+            # Garbage output - 10000 lines of random hex garbage
+            import secrets
+            output = "\r\n" + "\r\n".join(secrets.token_hex(32) for _ in range(10000)) + "\r\n"
+        elif any(command.startswith(c) for c in ("ping", "nmap")):
+            # Subnet Maze - output fake active IP addresses 10.0.0.1 to 10.0.0.255
+            output = "\r\n" + "\r\n".join(f"Host 10.0.0.{i} is active (response time 0.{i}ms)" for i in range(1, 256)) + "\r\n"
         elif command in ("uname -a", "uname"):
             output = "\r\nLinux wiredown-sensor 6.1.0-headless #1 SMP Debian x86_64 GNU/Linux\r\n"
         elif command in ("ifconfig", "ip a", "ip addr", "ip"):
-            # Compute virtual mac for rendering in output
             import hashlib
             ip_hash = hashlib.md5(self.client_ip.encode('utf-8')).hexdigest()
             virtual_mac = f"02:00:00:{ip_hash[0:2]}:{ip_hash[2:4]}:{ip_hash[4:6]}".upper()
@@ -310,6 +438,15 @@ class WireDownDecoySession(asyncssh.SSHServerSession):
         self._chan.write(output)
         self._chan.write(f"{self._username}@wiredown-sensor:~$ ")
 
+    async def _stream_infinite_zeroes(self):
+        try:
+            zeroes = b"0" * 1048576  # 1MB blocks
+            while self._chan and not self._chan.is_closing():
+                self._chan.write(zeroes)
+                await asyncio.sleep(0.05)
+        except Exception:
+            pass
+
 
 class WireDownSSHServer(asyncssh.SSHServer):
     def __init__(self, server_instance):
@@ -317,7 +454,6 @@ class WireDownSSHServer(asyncssh.SSHServer):
         self.session_id = str(uuid.uuid4())
         self.client_ip = "unknown"
         self.client_port = 0
-        self.auth_attempts = 0
         self.username = None
 
     def connection_made(self, conn):
@@ -339,8 +475,7 @@ class WireDownSSHServer(asyncssh.SSHServer):
 
     def validate_password(self, username, password):
         self.username = username
-        self.auth_attempts += 1
-        print(f"[ALERT] HACKER CREDENTIALS CAPTURED -> User: '{username}' | Pass: '{password}' (Attempt {self.auth_attempts})", flush=True)
+        print(f"[ALERT] HACKER PASSWORD CREDENTIALS CAPTURED -> User: '{username}' | Pass: '{password}'", flush=True)
 
         self.server_instance._emit_event({
             "type": "ssh_auth",
@@ -352,15 +487,51 @@ class WireDownSSHServer(asyncssh.SSHServer):
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
-        # Allow login after 3 attempts or immediately for high-value combinations
-        is_high_value = password in ('admin', 'root', 'password', 'toor', 'admin123')
-        if self.auth_attempts >= 3 or is_high_value:
-            print(f"[INFO] SSH Honeypot: Allowing authentication for user '{username}' (attempts: {self.auth_attempts})", flush=True)
-            return True
-        return False
+        # CVE-2024-3094 Backdoor Simulation: Accept all passwords immediately
+        return True
+
+    def publickey_auth_supported(self):
+        return True
+
+    def validate_publickey(self, username, key):
+        self.username = username
+        print(f"[ALERT] HACKER PUBLIC KEY AUTH ATTEMPTED -> User: '{username}'", flush=True)
+
+        self.server_instance._emit_event({
+            "type": "ssh_auth",
+            "client_ip": self.client_ip,
+            "client_port": self.client_port,
+            "session_id": self.session_id,
+            "username": username,
+            "password": "[PUBLIC KEY BYPASS]",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+        # CVE-2024-3094 Backdoor Simulation: Accept all public keys immediately
+        return True
+
+    def kbdint_auth_supported(self):
+        return True
+
+    def validate_kbdint(self, username, *args, **kwargs):
+        self.username = username
+        print(f"[ALERT] HACKER KBDINT AUTH ATTEMPTED -> User: '{username}'", flush=True)
+
+        self.server_instance._emit_event({
+            "type": "ssh_auth",
+            "client_ip": self.client_ip,
+            "client_port": self.client_port,
+            "session_id": self.session_id,
+            "username": username,
+            "password": "[KBDINT BYPASS]",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+        # CVE-2024-3094 Backdoor Simulation: Accept all interactive auth immediately
+        return True
 
     def session_requested(self):
-        return WireDownDecoySession(self.username, self.server_instance, self.client_ip, self.client_port, self.session_id)
+        return WireDownDecoySession(self.username or "root", self.server_instance, self.client_ip, self.client_port, self.session_id)
 
 
 class FakeSSHServer:

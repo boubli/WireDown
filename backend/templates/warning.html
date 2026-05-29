@@ -108,6 +108,53 @@
     opacity: 0.9;
   }
 
+  /* ── Radar ── */
+  .radar {
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    position: relative;
+    margin-bottom: 2rem;
+    border: 1px solid rgba(255, 0, 0, 0.35);
+    box-shadow: 0 0 28px var(--glow), inset 0 0 18px rgba(255, 0, 0, 0.4);
+    background: radial-gradient(circle at center, rgba(255, 0, 0, 0.2) 0%, rgba(255, 0, 0, 0.04) 60%, transparent 70%);
+    overflow: hidden;
+  }
+  .radar::before {
+    content: "";
+    position: absolute;
+    inset: 8px;
+    border-radius: 50%;
+    border: 1px dashed rgba(255, 0, 0, 0.25);
+  }
+  .radar::after {
+    content: "";
+    position: absolute;
+    inset: -20%;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, rgba(255, 0, 0, 0.55), rgba(255, 0, 0, 0) 60%);
+    animation: radarSweep 2.8s linear infinite;
+    mix-blend-mode: screen;
+  }
+  .radar .line {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(255, 0, 0, 0.2);
+  }
+  .radar .line.vertical {
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    height: auto;
+  }
+  @keyframes radarSweep {
+    to { transform: rotate(360deg); }
+  }
+
   /* ── Countdown ── */
   .countdown-container {
     position: relative;
@@ -203,7 +250,12 @@
 <div class="container">
   <div class="warning-icon">⚠</div>
   <div class="title">Security Violation Detected</div>
-  <div class="subtitle">Unauthorized network access — countermeasures engaged</div>
+  <div class="subtitle" style="color: var(--red); font-weight: bold; text-shadow: 0 0 10px var(--glow); text-transform: uppercase;">WARNING: UNAUTHORIZED ACCESS DETECTED. YOUR IP {{ ip_address }} HAS BEEN LOGGED BY WIREDOWN SENSOR. COUNTER-MEASURES DEPLOYED.</div>
+
+  <div class="radar" aria-hidden="true">
+    <span class="line"></span>
+    <span class="line vertical"></span>
+  </div>
 
   <div class="countdown-container">
     <div class="countdown" id="countdown">60</div>

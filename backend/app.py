@@ -14,7 +14,7 @@ from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 
-from threat_engine import ThreatEngine
+from threat_engine import ThreatEngine, CRITICAL_SIGNALS
 from bandwidth_throttle import BandwidthThrottle
 from dns_sinkhole import DNSSinkhole
 from port_scan_detector import PortScanDetector
@@ -64,24 +64,20 @@ threat_engine = ThreatEngine()
 bandwidth_throttle = BandwidthThrottle()
 xz_detector = XZBackdoorDetector()
 
-def on_threat_signal(ip, signal_type, details):
-    mac = "UNKNOWN"
+def _md5_mac_from_ip(ip: str) -> str:
+    import hashlib
+    ip_hash = hashlib.md5(ip.encode('utf-8')).hexdigest()
+    return f"02:00:00:{ip_hash[0:2]}:{ip_hash[2:4]}:{ip_hash[4:6]}".upper()
+
+
+def _resolve_mac_for_ip(ip: str) -> str:
     for m, d in devices.items():
         if d.get("ip") == ip:
-            mac = m
-            break
-            
-    if mac == "UNKNOWN" or not mac:
-        import hashlib
-        ip_hash = hashlib.md5(ip.encode('utf-8')).hexdigest()
-        mac = f"02:00:00:{ip_hash[0:2]}:{ip_hash[2:4]}:{ip_hash[4:6]}".upper()
-            
-    device = register_device(mac)
-    device["ip"] = ip
-    threat_engine.record_signal(mac, signal_type, details)
-    score = threat_engine.get_score(mac)
-    status = threat_engine.get_status(mac)
-    
+            return m
+    return _md5_mac_from_ip(ip)
+
+
+def _emit_threat_alert(mac: str, ip: str, signal_type: str, details: dict, score: int, status: str) -> None:
     socketio.emit("threat_alert", {
         "mac": mac,
         "ip": ip,
@@ -90,6 +86,49 @@ def on_threat_signal(ip, signal_type, details):
         "new_score": score,
         "status": status
     }, namespace=WS_NS_FRONTEND)
+
+
+def on_threat_signal(ip, signal_type, details):
+    mac = _resolve_mac_for_ip(ip)
+    on_threat_signal_mac(mac, signal_type, details, ip=ip)
+
+
+def on_threat_signal_mac(mac, signal_type, details, ip=None):
+    device = register_device(mac)
+    if ip:
+        device["ip"] = ip
+    threat_engine.record_signal(mac, signal_type, details)
+    score = threat_engine.get_score(mac)
+    status = threat_engine.get_status(mac)
+
+    if signal_type in CRITICAL_SIGNALS or status == "attacker":
+        device["status"] = "attacker"
+        device["is_attacker"] = True
+
+    _emit_threat_alert(mac, ip or device.get("ip", ""), signal_type, details, score, status)
+
+
+def _emit_ssh_keystroke(ev):
+    ip = ev.get("client_ip", "unknown")
+    mac = _resolve_mac_for_ip(ip)
+    device = register_device(mac)
+    if ip:
+        device["ip"] = ip
+    score = threat_engine.get_score(mac)
+    status = threat_engine.get_status(mac)
+    _emit_threat_alert(mac, ip, "ssh_keystroke", ev, score, status)
+
+
+def on_ssh_event(ev):
+    ev_type = ev.get("type", "")
+    if ev_type == "ssh_keystroke":
+        _emit_ssh_keystroke(ev)
+    elif ev_type == "ssh_activity":
+        on_threat_signal(ev.get("client_ip", "unknown"), "ssh_activity", ev)
+    elif ev_type in ("ssh_connection", "ssh_auth"):
+        on_threat_signal(ev.get("client_ip", "unknown"), "ssh_login", ev)
+    else:
+        on_threat_signal(ev.get("client_ip", "unknown"), "ssh_activity", ev)
 
 dns_sinkhole = DNSSinkhole(
     on_tunnel_detected=lambda ip, domain, entropy: on_threat_signal(ip, "dns_tunnel", {"domain": domain, "entropy": entropy})
@@ -100,7 +139,7 @@ port_scan_detector = PortScanDetector(
 )
 
 fake_ssh = FakeSSHServer(
-    on_activity=lambda ev: on_threat_signal(ev.get("client_ip"), "ssh_activity", ev),
+    on_activity=on_ssh_event,
     on_xz_probe=lambda ip, details: xz_detector.analyze_post_auth_behavior(ip, [details.get("command", "")])
 )
 
@@ -136,6 +175,16 @@ def register_device(mac: str, rssi: int = 0, channel: int = 0) -> dict:
 
 # --- HTTP ---
 
+@app.before_request
+def force_admin_decoy():
+    if request.path != "/admin":
+        return None
+    ip = request.remote_addr
+    ua = request.headers.get("User-Agent", "")
+    on_threat_signal(ip, "web_dir_brute", {"path": "/admin"})
+    return render_template("warning.html", user_agent=ua, ip_address=ip)
+
+
 @app.route("/", methods=["GET"])
 def index():
     # If the request accepts HTML (i.e. browser request), render the matrix trap page
@@ -143,6 +192,7 @@ def index():
     ua = request.headers.get("User-Agent", "")
     if "text/html" in accept or "Mozilla" in ua:
         ip = request.remote_addr
+        on_threat_signal(ip, "web_trap", {"path": "/"})
         return render_template("warning.html", user_agent=ua, ip_address=ip)
 
     return jsonify({
@@ -155,6 +205,14 @@ def index():
             "websocket": "ws://HOST:5000 (socket.io)",
         },
     })
+
+
+@app.route("/admin", methods=["GET", "POST"])
+def admin_decoy():
+    ip = request.remote_addr
+    ua = request.headers.get("User-Agent", "")
+    on_threat_signal(ip, "web_dir_brute", {"path": "/admin"})
+    return render_template("warning.html", user_agent=ua, ip_address=ip)
 
 
 @app.route("/warning", methods=["GET"])
@@ -292,6 +350,21 @@ def esp32_message(raw):
         entry = {"mac": mac, "confirmed": True, "ts": now_iso(), "frames": data.get("frames", 0)}
         isolation_log.append(entry)
         socketio.emit("isolation_confirmed", entry, namespace=WS_NS_FRONTEND)
+
+    elif msg_type == "attack_detected":
+        attack = data.get("attack", "")
+        mac = data.get("mac", "")
+        details = data.get("details", {})
+        if isinstance(details, str):
+            try:
+                details = json.loads(details)
+            except json.JSONDecodeError:
+                details = {"raw": details}
+        if not attack or not mac:
+            log.warning("Attack signal missing fields: %s", data)
+            return
+        ip_from_details = details.get("ip") if isinstance(details, dict) else None
+        on_threat_signal_mac(mac, attack, details, ip=ip_from_details)
 
     elif msg_type == "pong":
         pass

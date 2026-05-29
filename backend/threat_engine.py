@@ -13,18 +13,29 @@ SIGNAL_WEIGHTS: Dict[str, int] = {
     "xz_backdoor":          80,
     "krack_attack":         60,
     "deauth_flood":         50,
-    "arp_spoof":            40,
+    "arp_spoof":            60,
     "dns_tunnel":           40,
     "port_scan":            35,
     "brute_force":          30,
     "ssh_login":            30,
-    "ssh_activity":         30,
+    "ssh_activity":         50,
     "admin_login_attempt":  30,
     "mac_flood":            25,
     "honeypot_file_access": 20,
     "ssh_command":          20,
     "high_connection_rate": 15,
     "probe_anomaly":        10,
+    "port_scan_flood":      60,
+    "dns_poison_attempt":   60,
+    "web_dir_brute":        60,
+    "web_trap":             60,
+}
+
+CRITICAL_SIGNALS = {
+    "port_scan_flood",
+    "dns_poison_attempt",
+    "arp_spoof",
+    "web_dir_brute",
 }
 
 # Decay configuration
