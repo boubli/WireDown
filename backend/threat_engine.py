@@ -18,6 +18,7 @@ SIGNAL_WEIGHTS: Dict[str, int] = {
     "port_scan":            35,
     "brute_force":          30,
     "ssh_login":            30,
+    "ssh_activity":         30,
     "admin_login_attempt":  30,
     "mac_flood":            25,
     "honeypot_file_access": 20,

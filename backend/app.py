@@ -1,5 +1,8 @@
 # backend hub — glues ESP32, frontend, and security modules together
 
+import eventlet
+eventlet.monkey_patch()
+
 import os
 import json
 import time
@@ -33,7 +36,7 @@ CORS(app, resources={r"/*": {"origins": cors_origins}})
 socketio = SocketIO(
     app,
     cors_allowed_origins=cors_origins,
-    async_mode="threading",
+    async_mode="eventlet",
     ping_timeout=30,
     ping_interval=10,
     logger=False,
@@ -67,6 +70,11 @@ def on_threat_signal(ip, signal_type, details):
         if d.get("ip") == ip:
             mac = m
             break
+            
+    if mac == "UNKNOWN" or not mac:
+        import hashlib
+        ip_hash = hashlib.md5(ip.encode('utf-8')).hexdigest()
+        mac = f"02:00:00:{ip_hash[0:2]}:{ip_hash[2:4]}:{ip_hash[4:6]}".upper()
             
     device = register_device(mac)
     device["ip"] = ip
