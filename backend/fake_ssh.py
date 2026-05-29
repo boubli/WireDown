@@ -181,12 +181,72 @@ class FakeSSHSession:
         }
 
 
+class WireDownDecoySession(asyncssh.SSHServerSession):
+    def __init__(self, username, server_instance, client_ip, client_port, session_id):
+        self._username = username
+        self.server_instance = server_instance
+        self.client_ip = client_ip
+        self.client_port = client_port
+        self.session_id = session_id
+        self._chan = None
+
+    def connection_made(self, chan):
+        self._chan = chan
+        # Send a realistic Linux welcome banner (MOTD)
+        self._chan.write("Linux wiredown-sensor 6.1.0-headless #1 SMP Debian\r\n")
+        self._chan.write("Last login: Fri May 29 11:30:22 2026 from 192.168.8.2\r\n")
+        self._chan.write(f"{self._username}@wiredown-sensor:~$ ")
+
+    def data_received(self, data, datatype):
+        try:
+            command = data.decode('utf-8').strip()
+        except Exception:
+            command = str(data).strip()
+
+        if not command:
+            self._chan.write(f"\r\n{self._username}@wiredown-sensor:~$ ")
+            return
+
+        print(f"[COUNTER-ATTACK] Hacker executed command in honeypot: '{command}'", flush=True)
+
+        self.server_instance._emit_event({
+            "type": "ssh_command",
+            "client_ip": self.client_ip,
+            "client_port": self.client_port,
+            "session_id": self.session_id,
+            "username": self._username,
+            "command": command,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+        # TARPIT COUNTER-ATTACK: Delay processing by 3 seconds using the asyncio event loop
+        loop = asyncio.get_event_loop()
+        loop.call_later(3, self._execute_and_respond, command)
+
+    def _execute_and_respond(self, command):
+        if command == "exit":
+            self._chan.exit(0)
+            return
+
+        if command == "whoami":
+            output = "\r\nroot\r\n"
+        elif command == "uname -a":
+            output = "\r\nLinux wiredown-sensor 6.1.0-headless #1 SMP Debian x86_64 GNU/Linux\r\n"
+        else:
+            output = f"\r\nbash: {command}: command not found\r\n"
+
+        self._chan.write(output)
+        self._chan.write(f"{self._username}@wiredown-sensor:~$ ")
+
+
 class WireDownSSHServer(asyncssh.SSHServer):
     def __init__(self, server_instance):
         self.server_instance = server_instance
         self.session_id = str(uuid.uuid4())
         self.client_ip = "unknown"
         self.client_port = 0
+        self.auth_attempts = 0
+        self.username = None
 
     def connection_made(self, conn):
         peername = conn.get_extra_info('peername')
@@ -206,7 +266,9 @@ class WireDownSSHServer(asyncssh.SSHServer):
         return True
 
     def validate_password(self, username, password):
-        print(f"[ALERT] HACKER CREDENTIALS CAPTURED -> User: '{username}' | Pass: '{password}'", flush=True)
+        self.username = username
+        self.auth_attempts += 1
+        print(f"[ALERT] HACKER CREDENTIALS CAPTURED -> User: '{username}' | Pass: '{password}' (Attempt {self.auth_attempts})", flush=True)
 
         self.server_instance._emit_event({
             "type": "ssh_auth",
@@ -218,8 +280,15 @@ class WireDownSSHServer(asyncssh.SSHServer):
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
-        # Return False to simulate password failure so they keep trying different combinations
+        # Allow login after 3 attempts or immediately for high-value combinations
+        is_high_value = password in ('admin', 'root', 'password', 'toor', 'admin123')
+        if self.auth_attempts >= 3 or is_high_value:
+            print(f"[INFO] SSH Honeypot: Allowing authentication for user '{username}' (attempts: {self.auth_attempts})", flush=True)
+            return True
         return False
+
+    def session_requested(self):
+        return WireDownDecoySession(self.username, self.server_instance, self.client_ip, self.client_port, self.session_id)
 
 
 class FakeSSHServer:

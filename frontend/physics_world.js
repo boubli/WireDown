@@ -249,6 +249,8 @@
           msg = `Connection from ${ip}`;
         } else if (type === "ssh_auth") {
           msg = `Auth attempt: User='${data.details.username}' Pass='${data.details.password}'`;
+        } else if (type === "ssh_command") {
+          msg = `Command: User='${data.details.username}' Cmd='${data.details.command}'`;
         }
         
         if (msg) {
