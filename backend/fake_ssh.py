@@ -189,12 +189,55 @@ class WireDownDecoySession(asyncssh.SSHServerSession):
         self.client_port = client_port
         self.session_id = session_id
         self._chan = None
+        self._warning_triggered = False
+        self._idle_task = None
 
     def connection_made(self, chan):
         self._chan = chan
         # Send a realistic Linux welcome banner (MOTD)
         self._chan.write("Linux wiredown-sensor 6.1.0-headless #1 SMP Debian\r\n")
         self._chan.write("Last login: Fri May 29 11:30:22 2026 from 192.168.8.2\r\n")
+        self._chan.write(f"{self._username}@wiredown-sensor:~$ ")
+
+        # Schedule the 5-second idle geolocation / warning trigger
+        loop = asyncio.get_event_loop()
+        self._idle_task = loop.call_later(5, self._trigger_warning_if_idle)
+
+    def _trigger_warning_if_idle(self):
+        if not self._warning_triggered:
+            self._warning_triggered = True
+            loop = asyncio.get_event_loop()
+            loop.run_in_executor(None, self._fetch_geoip_and_warn)
+
+    def _fetch_geoip_and_warn(self):
+        import urllib.request
+        import json
+        import hashlib
+
+        # Fetch IP Location
+        try:
+            url = f"http://ip-api.com/json/{self.client_ip}"
+            with urllib.request.urlopen(url, timeout=5) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                city = data.get('city', 'Unknown')
+                country = data.get('country', 'Unknown')
+                isp = data.get('isp', 'Unknown')
+        except Exception:
+            city, country, isp = 'Unknown', 'Unknown', 'Unknown'
+
+        # Compute Virtual MAC Address
+        ip_hash = hashlib.md5(self.client_ip.encode('utf-8')).hexdigest()
+        virtual_mac = f"02:00:00:{ip_hash[0:2]}:{ip_hash[2:4]}:{ip_hash[4:6]}".upper()
+
+        # Send direct terminal warnings
+        warning = (
+            f"\r\n\r\n"
+            f"\033[1;31m[CRITICAL ALERT] SECURITY BREACH DETECTED BY WIRE_DOWN ACTIVE SENSOR.\033[0m\r\n"
+            f"\033[1;33m[TRACKING]:\033[0m Attacker IP: {self.client_ip} | Virtual MAC: {virtual_mac}\r\n"
+            f"\033[1;33m[LOCATION]:\033[0m Proximate Location Captured: {city}, {country} via ISP: {isp}\r\n"
+            f"\033[1;33m[ACTION]:\033[0m Counter-surveillance protocols initiated. Session isolated.\r\n\r\n"
+        )
+        self._chan.write(warning)
         self._chan.write(f"{self._username}@wiredown-sensor:~$ ")
 
     def data_received(self, data, datatype):
@@ -219,19 +262,48 @@ class WireDownDecoySession(asyncssh.SSHServerSession):
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
-        # TARPIT COUNTER-ATTACK: Delay processing by 3 seconds using the asyncio event loop
+        # Trigger warnings on sensitive commands
+        is_sensitive = command in ("ifconfig", "ip a", "whoami", "netstat", "ip addr", "ip")
+        if is_sensitive and not self._warning_triggered:
+            self._warning_triggered = True
+            if self._idle_task:
+                self._idle_task.cancel()
+            loop = asyncio.get_event_loop()
+            loop.run_in_executor(None, self._fetch_geoip_and_warn)
+
+        # TARPIT COUNTER-ATTACK: Delay processing by 5 seconds using the asyncio event loop to paralyze them
         loop = asyncio.get_event_loop()
-        loop.call_later(3, self._execute_and_respond, command)
+        loop.call_later(5, self._execute_and_respond, command)
 
     def _execute_and_respond(self, command):
         if command == "exit":
             self._chan.exit(0)
             return
 
+        # Handle simulated command responses
         if command == "whoami":
             output = "\r\nroot\r\n"
-        elif command == "uname -a":
+        elif command in ("uname -a", "uname"):
             output = "\r\nLinux wiredown-sensor 6.1.0-headless #1 SMP Debian x86_64 GNU/Linux\r\n"
+        elif command in ("ifconfig", "ip a", "ip addr", "ip"):
+            # Compute virtual mac for rendering in output
+            import hashlib
+            ip_hash = hashlib.md5(self.client_ip.encode('utf-8')).hexdigest()
+            virtual_mac = f"02:00:00:{ip_hash[0:2]}:{ip_hash[2:4]}:{ip_hash[4:6]}".upper()
+            output = (
+                f"\r\neth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500\r\n"
+                f"        inet 10.0.0.50  netmask 255.255.255.0  broadcast 10.0.0.255\r\n"
+                f"        inet6 fe80::42:acff:fe11:2  prefixlen 64  scopeid 0x20<link>\r\n"
+                f"        ether {virtual_mac.lower()}  txqueuelen 1000  (Ethernet)\r\n"
+                f"        RX packets 98321  bytes 128938102 (128.9 MB)\r\n"
+                f"        TX packets 84729  bytes 8729381 (8.7 MB)\r\n"
+            )
+        elif command == "netstat":
+            output = (
+                f"\r\nActive Internet connections (w/o servers)\r\n"
+                f"Proto Recv-Q Send-Q Local Address           Foreign Address         State      \r\n"
+                f"tcp        0      0 10.0.0.50:22            {self.client_ip}:{self.client_port}      ESTABLISHED\r\n"
+            )
         else:
             output = f"\r\nbash: {command}: command not found\r\n"
 

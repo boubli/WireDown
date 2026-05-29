@@ -138,6 +138,13 @@ def register_device(mac: str, rssi: int = 0, channel: int = 0) -> dict:
 
 @app.route("/", methods=["GET"])
 def index():
+    # If the request accepts HTML (i.e. browser request), render the matrix trap page
+    accept = request.headers.get("Accept", "")
+    ua = request.headers.get("User-Agent", "")
+    if "text/html" in accept or "Mozilla" in ua:
+        ip = request.remote_addr
+        return render_template("warning.html", user_agent=ua, ip_address=ip)
+
     return jsonify({
         "service": "WireDown Backend",
         "version": "1.0.0",
