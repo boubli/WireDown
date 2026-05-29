@@ -231,7 +231,55 @@
     spawnDevice(dev.mac, dev.rssi, dev.channel);
   });
 
+  socket.on("threat_alert", (data) => {
+    console.log("[WireDown] Threat alert received:", data);
+    
+    // Update threat score on AI agent
+    aiAgent.updateThreatScore(data.mac, data.new_score, [data.signal]);
+    
+    // If the signal is ssh_activity, add a log to the SSH trap log
+    if (data.signal === "ssh_activity" && data.details) {
+      const sshLog = document.getElementById("sshLog");
+      if (sshLog) {
+        const type = data.details.type;
+        const ip = data.details.client_ip;
+        let msg = "";
+        
+        if (type === "ssh_connection") {
+          msg = `Connection from ${ip}`;
+        } else if (type === "ssh_auth") {
+          msg = `Auth attempt: User='${data.details.username}' Pass='${data.details.password}'`;
+        }
+        
+        if (msg) {
+          const entry = document.createElement("div");
+          entry.className = "ssh-line alert";
+          const time = new Date().toLocaleTimeString("en-US", { hour12: false });
+          entry.textContent = `[${time}] ${msg}`;
+          sshLog.appendChild(entry);
+          sshLog.scrollTop = sshLog.scrollHeight;
+        }
+      }
+    }
 
+    // If the signal is admin_login_attempt, add a log to the Admin panel trap log
+    if (data.signal === "admin_login_attempt" && data.details) {
+      const adminLog = document.getElementById("adminLog");
+      if (adminLog) {
+        const user = data.details.user;
+        const pw = data.details.password;
+        const entry = document.createElement("div");
+        entry.className = "ssh-line alert";
+        const time = new Date().toLocaleTimeString("en-US", { hour12: false });
+        entry.textContent = `[${time}] Auth attempt: User='${user}' Pass='${pw}'`;
+        adminLog.appendChild(entry);
+        adminLog.scrollTop = adminLog.scrollHeight;
+      }
+    }
+    
+    updateDeviceList();
+    updateStats();
+  });
 
   socket.on("isolation_confirmed", (data) => {
     addEventLog("success", `Isolation confirmed for ${data.mac}`);
