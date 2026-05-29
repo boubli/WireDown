@@ -59,6 +59,7 @@ runcmd:
   - curl -fsSL https://get.docker.com | sh
   - git clone https://github.com/boubli/WireDown.git /opt/wiredown
   - cd /opt/wiredown
+  - cp .env.example .env
   - docker compose up -d
   - systemctl enable --now qemu-guest-agent
   - sh -c "IP=\\\$(hostname -I | awk '{print \\\$1}'); echo -e '\\n======================================================\\n  WireDown Zero-Gravity Honeypot\\n======================================================\\nDashboard URL: http://\\\$IP:8080\\nBackend API:   http://\\\$IP:5000\\nSSH Honeypot:  ssh root@\\\$IP -p 2222\\n\\nTo view logs:  cd /opt/wiredown && docker compose logs -f\\n======================================================\\n' > /etc/motd"

@@ -36,7 +36,7 @@ for ID in $(pct list | awk 'NR>1 {print $1}'); do
         pct exec $ID -- bash -c "cd /opt/wiredown && git pull"
         
         echo -e "${CYAN}[*] Rebuilding and restarting Docker containers...${NC}"
-        pct exec $ID -- bash -c "cd /opt/wiredown && docker compose up -d --build"
+        pct exec $ID -- bash -c "cd /opt/wiredown && test -f .env || cp .env.example .env && docker compose up -d --build"
         
         FOUND=1
         echo -e "${GREEN}[✔] Container $ID updated successfully!${NC}"

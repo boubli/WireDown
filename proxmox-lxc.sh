@@ -64,7 +64,7 @@ pct exec $ID -- bash -c "while ! ping -c 1 -W 1 8.8.8.8 >/dev/null; do sleep 1; 
 
 echo -e "${CYAN}[*] Installing Docker and WireDown inside LXC...${NC}"
 pct exec $ID -- bash -c "apt-get update && apt-get install -y curl git && curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh"
-pct exec $ID -- bash -c "git clone https://github.com/boubli/WireDown.git /opt/wiredown && cd /opt/wiredown && docker compose up -d"
+pct exec $ID -- bash -c "git clone https://github.com/boubli/WireDown.git /opt/wiredown && cd /opt/wiredown && cp .env.example .env && docker compose up -d"
 
 echo -e "${CYAN}[*] Retrieving IP Address...${NC}"
 IP=$(pct exec $ID -- ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
