@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<!--
+  pfSense (by Netgate) login portal — pixel-perfect honeypot clone.
+  Served at GET / to unauthorized HTTP visitors.
+
+  Reference: official pfSense 2.x community-edition login portal screenshot
+  (white header w/ pfSense badge + "netgate.rocks" right; dark navy full
+  body; centered SIGN IN with two underline-only inputs; bright green
+  SIGN IN button; light-gray footer bar with Rubicon copyright).
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>pfSense - Login</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    background: #1e3556;          /* dominant pfSense navy */
+    color: #ffffff;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  /* ── White header bar ─────────────────────────────────────────── */
+  .topbar {
+    background: #ffffff;
+    height: 76px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    flex-shrink: 0;
+  }
+
+  .pfsense-logo {
+    display: inline-flex;
+    align-items: center;
+    height: 44px;
+    line-height: 1;
+    user-select: none;
+  }
+  .pfsense-logo .badge {
+    width: 44px;
+    height: 44px;
+    background: #1d3556;        /* same navy as page bg */
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 26px;
+    font-style: italic;
+    letter-spacing: -1px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 2px;
+  }
+  .pfsense-logo .wordmark {
+    color: #1d3556;
+    font-weight: 700;
+    font-size: 30px;
+    font-style: italic;
+    letter-spacing: -0.5px;
+    margin-left: 4px;
+    position: relative;
+  }
+  .pfsense-logo .wordmark::after {
+    /* registered-trademark mark */
+    content: "®";
+    font-size: 10px;
+    font-style: normal;
+    vertical-align: super;
+    color: #1d3556;
+    margin-left: 2px;
+    font-weight: 400;
+  }
+
+  .topbar .netgate-link {
+    color: #2c5b8e;
+    font-weight: 700;
+    font-size: 14px;
+    text-decoration: none;
+  }
+  .topbar .netgate-link:hover { text-decoration: underline; }
+
+  /* ── Centered sign-in area ────────────────────────────────────── */
+  .content {
+    flex: 1;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 12vh;
+  }
+
+  .signin-wrap {
+    width: 100%;
+    max-width: 380px;
+    text-align: center;
+  }
+
+  .signin-heading {
+    font-size: 18px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-bottom: 36px;
+  }
+
+  .error-banner {
+    background: rgba(214, 67, 48, 0.18);
+    border-left: 3px solid #d04330;
+    color: #ffd2cc;
+    font-size: 13px;
+    padding: 8px 12px;
+    margin: -16px 0 20px;
+    text-align: left;
+    border-radius: 2px;
+    display: none;
+  }
+  .error-banner.show { display: block; }
+
+  .field {
+    margin-bottom: 22px;
+    text-align: left;
+  }
+  .field input {
+    width: 100%;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid rgba(255,255,255,0.55);
+    color: #ffffff;
+    font-size: 16px;
+    font-family: inherit;
+    padding: 8px 2px;
+    outline: none;
+    transition: border-color 120ms ease;
+  }
+  .field input::placeholder {
+    color: rgba(255,255,255,0.55);
+    font-style: italic;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+  .field input:focus { border-bottom-color: #ffffff; }
+  .field input:-webkit-autofill {
+    -webkit-text-fill-color: #ffffff;
+    transition: background-color 0s 9999s;
+  }
+
+  .signin-btn-wrap {
+    display: flex;
+    justify-content: center;
+    margin-top: 28px;
+  }
+  .signin-btn {
+    background: #5cb85c;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    padding: 10px 32px;
+    border: 0;
+    border-radius: 2px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: background 120ms ease, box-shadow 120ms ease;
+    min-width: 200px;
+  }
+  .signin-btn:hover  { background: #4cae4c; box-shadow: 0 2px 6px rgba(0,0,0,0.25); }
+  .signin-btn:active { background: #449d44; }
+
+  /* ── Bottom gray footer bar ──────────────────────────────────── */
+  .footer {
+    background: #b8b8b8;
+    color: #1d3556;
+    text-align: center;
+    font-size: 11px;
+    padding: 8px 16px;
+    letter-spacing: 0.2px;
+    flex-shrink: 0;
+  }
+  .footer a {
+    color: #2c5b8e;
+    text-decoration: none;
+  }
+  .footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<!-- ── White header bar ─────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="pfsense-logo" aria-label="pfSense">
+    <span class="badge">pf</span><span class="wordmark">sense</span>
+  </div>
+  <a class="netgate-link" href="https://netgate.com" tabindex="-1">netgate.rocks</a>
+</header>
+
+<!-- ── Dark-navy centered sign-in panel ────────────────────────── -->
+<main class="content">
+  <form class="signin-wrap" method="POST" action="/login" autocomplete="off">
+    <div class="signin-heading">SIGN IN</div>
+
+    <div id="errorBanner" class="error-banner">Username or Password incorrect.</div>
+
+    <div class="field">
+      <input
+        type="text"
+        id="usernamefld"
+        name="username"
+        placeholder="Username"
+        autocomplete="username"
+        autocapitalize="none"
+        spellcheck="false"
+        autofocus
+        required
+      />
+    </div>
+
+    <div class="field">
+      <input
+        type="password"
+        id="passwordfld"
+        name="password"
+        placeholder="Password"
+        autocomplete="current-password"
+        required
+      />
+    </div>
+
+    <div class="signin-btn-wrap">
+      <button type="submit" class="signin-btn">SIGN IN</button>
+    </div>
+  </form>
+</main>
+
+<!-- ── Light-gray footer bar ───────────────────────────────────── -->
+<footer class="footer">
+  pfSense is &copy; 2004 - 2017 by
+  <a href="https://www.rubiconcommunications.com" tabindex="-1">Rubicon Communications, LLC (Netgate)</a>.
+  All Rights Reserved. [<a href="/license" tabindex="-1">view license</a>]
+</footer>
+
+<script>
+  (function () {
+    var p = new URLSearchParams(window.location.search);
+    if (p.get('error') === '1') {
+      document.getElementById('errorBanner').classList.add('show');
+    }
+  })();
+</script>
+</body>
+</html>

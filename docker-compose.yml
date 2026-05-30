@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: src/api/Dockerfile
+    container_name: wiredown-backend
+    env_file:
+      - .env
+    environment:
+      - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-PROXMOX}
+    ports:
+      - "5000:5000"
+      - "2222:2222"
+      - "5353:5353/udp"
+      - "80:5000"
+      - "8080:5000"
+    restart: unless-stopped
+    networks:
+      - wiredown-net
+
+networks:
+  wiredown-net:
+    driver: bridge

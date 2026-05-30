@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WireDown - SOC Login</title>
+    <link rel="stylesheet" href="{{ url_for('real_admin.static', filename='style.css') }}">
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: #0a0000;
+            margin: 0;
+            font-family: 'Share Tech Mono', monospace;
+            color: #ff3333;
+        }
+        .login-container {
+            background: #110000;
+            border: 1px solid #ff1a1a;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(255, 26, 26, 0.2);
+            width: 100%;
+            max-width: 400px;
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 24px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px #ff3333;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #ffaa00;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            background: #1a0000;
+            border: 1px solid #ff1a1a;
+            color: #ff3333;
+            border-radius: 4px;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+        .form-group input:focus {
+            outline: none;
+            box-shadow: 0 0 10px rgba(255, 26, 26, 0.5);
+        }
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: #ff1a1a;
+            color: #110000;
+            border: none;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .btn:hover {
+            background: #ff3333;
+            box-shadow: 0 0 15px rgba(255, 26, 26, 0.6);
+        }
+        .error {
+            color: #ff1a1a;
+            background: rgba(255, 26, 26, 0.1);
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            text-align: center;
+            border: 1px solid #ff1a1a;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">WireDown SOC</div>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="POST">
+            <div class="form-group">
+                <label>Operator ID</label>
+                <input type="text" name="username" required autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>Access Code</label>
+                <input type="password" name="password" required>
+            </div>
+            <button type="submit" class="btn">Authenticate</button>
+        </form>
+    </div>
+</body>
+</html>

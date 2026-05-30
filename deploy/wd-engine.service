@@ -1,0 +1,23 @@
+[Unit]
+Description=WireDown wd-engine (Rust data plane: AF_PACKET sniff + DNS sinkhole)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/wd-engine \
+    --iface br0 \
+    --uds /run/wiredown.sock \
+    --upstream-dns 1.1.1.1 \
+    --blocklist /etc/wiredown/blocklist.txt
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+Restart=always
+RestartSec=2s
+MemoryMax=64M
+CPUWeight=50
+StandardOutput=append:/var/log/wd-engine.log
+StandardError=append:/var/log/wd-engine.log
+
+[Install]
+WantedBy=multi-user.target
