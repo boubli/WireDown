@@ -1,0 +1,27 @@
+[Unit]
+Description=WireDown control plane (FastAPI/Flask + Socket.IO + SQLite)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/wiredown/src/api
+EnvironmentFile=-/etc/wiredown/api.env
+ExecStart=/opt/wiredown/.venv/bin/uvicorn server:app --host 0.0.0.0 --port 8080 --workers 1
+Restart=always
+RestartSec=2s
+StandardOutput=append:/var/log/wiredown-api.log
+StandardError=append:/var/log/wiredown-api.log
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/wiredown /etc/wiredown /var/log /run
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target

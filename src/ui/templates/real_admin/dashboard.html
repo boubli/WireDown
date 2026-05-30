@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="description" content="WireDown — Network Tarpit UI"/>
+<title>WireDown — Zero-Gravity Honeypot</title>
+<link rel="stylesheet" href="{{ url_for('real_admin.static', filename='style.css') }}"/>
+</head>
+<body>
+
+<!-- ── 1-Click Update Banner (V1.0.0.3) ────────────────────────── -->
+<div id="updateBanner" class="update-banner" data-testid="update-banner" hidden>
+  <div class="update-banner-text">
+    <span class="update-banner-pulse" aria-hidden="true"></span>
+    <strong>Update available</strong>
+    <span class="update-banner-versions">
+      <span id="updCurrent">--</span> → <span id="updLatest" data-testid="update-latest-version">--</span>
+    </span>
+    <a id="updReleaseLink" target="_blank" rel="noopener">release notes</a>
+  </div>
+  <div class="update-banner-actions">
+    <button
+      type="button"
+      id="updInstallBtn"
+      class="update-banner-btn"
+      data-testid="update-install-btn"
+    >1-Click Update</button>
+    <button
+      type="button"
+      id="updDismissBtn"
+      class="update-banner-dismiss"
+      data-testid="update-dismiss-btn"
+      title="Dismiss"
+    >×</button>
+  </div>
+  <div id="updProgress" class="update-banner-progress" hidden>
+    <span class="spinner" aria-hidden="true"></span>
+    <span id="updProgressText">Installing latest release…</span>
+  </div>
+</div>
+
+<style>
+  .update-banner {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10000;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px;
+    padding: 10px 18px;
+    background: linear-gradient(90deg, #0f4a2e 0%, #126b3f 100%);
+    color: #e6ffec;
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+    font-size: 13px; letter-spacing: 0.2px;
+    border-bottom: 1px solid rgba(255,255,255,0.18);
+    box-shadow: 0 6px 22px rgba(0,0,0,0.35);
+  }
+  .update-banner-text { display: flex; align-items: center; gap: 10px; }
+  .update-banner-text strong { color: #b8ffd0; letter-spacing: 0.4px; }
+  .update-banner-versions { color: #d2ffe1; }
+  .update-banner-versions span { color: #fff; font-weight: 600; }
+  .update-banner-text a { color: #b8ffd0; text-decoration: underline dotted; }
+  .update-banner-pulse {
+    width: 9px; height: 9px; border-radius: 50%; background: #6dffa3;
+    box-shadow: 0 0 0 0 rgba(109,255,163,0.7);
+    animation: upd-pulse 1.6s infinite;
+  }
+  @keyframes upd-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(109,255,163,0.7); }
+    70%  { box-shadow: 0 0 0 8px rgba(109,255,163,0); }
+    100% { box-shadow: 0 0 0 0 rgba(109,255,163,0); }
+  }
+  .update-banner-actions { display: flex; align-items: center; gap: 8px; }
+  .update-banner-btn {
+    background: #5cb85c; color: #fff; border: 0;
+    padding: 7px 16px; border-radius: 3px;
+    font-family: inherit; font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.6px;
+    cursor: pointer; transition: background 120ms ease, transform 80ms ease;
+  }
+  .update-banner-btn:hover:not(:disabled)  { background: #4cae4c; }
+  .update-banner-btn:active:not(:disabled) { transform: translateY(1px); }
+  .update-banner-btn:disabled { opacity: 0.6; cursor: progress; }
+  .update-banner-dismiss {
+    background: transparent; color: #d2ffe1; border: 1px solid rgba(255,255,255,0.25);
+    width: 26px; height: 26px; border-radius: 50%;
+    font-size: 14px; line-height: 1; cursor: pointer;
+  }
+  .update-banner-dismiss:hover { background: rgba(255,255,255,0.08); }
+  .update-banner-progress {
+    flex-basis: 100%; display: flex; align-items: center; gap: 10px;
+    padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15); margin-top: 8px;
+    color: #d2ffe1;
+  }
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+<!-- Matter.js physics canvas -->
+<div id="physics-canvas"></div>
+
+<!-- ── HUD Overlay ─────────────────────────────────────────── -->
+<div class="hud">
+
+  <!-- Top Bar -->
+  <div class="top-bar">
+    <div class="logo">
+      <div class="logo-icon"></div>
+      <span class="logo-text">WireDown</span>
+    </div>
+    <div class="status-group">
+
+      <div class="status-badge">
+        <span class="status-dot online"></span>
+        AI Agent: Active
+      </div>
+      <div class="status-badge" id="sshStatus">
+        <span class="status-dot online" id="sshDot"></span>
+        SSH Trap: <span id="sshLabel">Listening</span>
+      </div>
+      <div class="status-badge" id="dnsStatus">
+        <span class="status-dot online" id="dnsDot"></span>
+        DNS Sinkhole: <span id="dnsLabel">Active</span>
+      </div>
+      <div class="status-badge" id="clockBadge">
+        <span id="liveClock">00:00:00</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Side Panel with Tabs -->
+  <div class="side-panel">
+
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="tab-overview">Overview</button>
+      <button class="tab-btn" data-tab="tab-attacks">Attacks</button>
+      <button class="tab-btn" data-tab="tab-traps">Traps</button>
+      <button class="tab-btn" data-tab="tab-log">Log</button>
+    </div>
+
+    <!-- TAB: Overview -->
+    <div class="tab-content active" id="tab-overview">
+
+      <!-- Stats Card -->
+      <div class="panel-card">
+        <div class="panel-title">System Metrics</div>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-value cyan" id="statDevices">0</div>
+            <div class="stat-label">Devices</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value magenta" id="statThreats">0</div>
+            <div class="stat-label">Threats</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value red" id="statIsolated">0</div>
+            <div class="stat-label">Isolated</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value green" id="statSafe">0</div>
+            <div class="stat-label">Safe</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value amber" id="statSuspicious">0</div>
+            <div class="stat-label">Suspicious</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value blue" id="statThrottled">0</div>
+            <div class="stat-label">Throttled</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Device List -->
+      <div class="panel-card">
+        <div class="panel-title">Network Devices</div>
+        <div class="device-list" id="deviceList">
+          <div style="color: var(--text-muted); font-size: 0.7rem; text-align: center; padding: 20px 0;">
+            Waiting for devices...
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Attacks -->
+    <div class="tab-content" id="tab-attacks">
+
+      <!-- Attack Feed -->
+      <div class="panel-card">
+        <div class="panel-title">Live Attack Feed</div>
+        <div class="attack-feed" id="attackFeed">
+          <div class="attack-empty">No attacks detected yet</div>
+        </div>
+      </div>
+
+      <!-- Threat Scores -->
+      <div class="panel-card">
+        <div class="panel-title">Threat Scores</div>
+        <div class="threat-scores" id="threatScores">
+          <div style="color: var(--text-muted); font-size: 0.7rem; text-align: center; padding: 12px 0;">
+            No scored devices
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Traps -->
+    <div class="tab-content" id="tab-traps">
+
+      <!-- SSH Trap Log -->
+      <div class="panel-card">
+        <div class="panel-title">SSH Honeypot Sessions</div>
+        <div class="ssh-log" id="sshLog">
+          <div class="ssh-line info">Fake SSH listening on :2222</div>
+          <div class="ssh-line info">Banner: SSH-2.0-OpenSSH_9.7p1</div>
+          <div class="ssh-line info">XZ bait: xz-utils 5.6.1 (CVE-2024-3094)</div>
+        </div>
+      </div>
+
+      <!-- Admin Panel Trap -->
+      <div class="panel-card">
+        <div class="panel-title">Admin Panel Trap</div>
+        <div class="admin-log" id="adminLog">
+          <div class="ssh-line info">Fake admin panel at /admin</div>
+          <div class="ssh-line info">Brand: NetGate Pro R4500</div>
+        </div>
+      </div>
+
+      <!-- Active Responses -->
+      <div class="panel-card">
+        <div class="panel-title">Active Responses</div>
+        <div class="response-list" id="responseList">
+          <div style="color: var(--text-muted); font-size: 0.7rem; text-align: center; padding: 12px 0;">
+            No active responses
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Log -->
+    <div class="tab-content" id="tab-log">
+      <div class="panel-card">
+        <div class="panel-title">AI Event Log</div>
+        <div class="event-log" id="eventLog">
+          <div class="event-entry info">System initialized — AI Agent online</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Control Buttons -->
+  <div class="controls">
+    <button class="btn danger" id="btnSpawnAttacker" title="Spawn a guaranteed attacker">
+      ⚠ Spawn Attacker
+    </button>
+    <button class="btn" id="btnSimulateSSH" title="Simulate an SSH login attempt">
+      💻 Sim SSH
+    </button>
+    <button class="btn danger" id="btnSimulateXZ" title="Simulate XZ backdoor exploit attempt">
+      ☠ Sim CVE-3094
+    </button>
+  </div>
+
+  <!-- Bottom Bar -->
+  <div class="bottom-bar">
+    <span>WireDown v2.0.0 · Network Tarpit Active</span>
+    <span id="fpsCounter">-- FPS</span>
+  </div>
+
+</div>
+
+<!-- Ambient particles -->
+<script>
+(function() {
+  const count = 15;
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement("div");
+    p.className = "ambient-particle";
+    p.style.left = Math.random() * 100 + "%";
+    p.style.top  = Math.random() * 100 + "%";
+    p.style.animationDelay    = (Math.random() * 20) + "s";
+    p.style.animationDuration = (15 + Math.random() * 15) + "s";
+    document.body.appendChild(p);
+  }
+})();
+</script>
+
+<!-- Tab switching logic -->
+<script>
+(function() {
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabContents = document.querySelectorAll('.tab-content');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      tabContents.forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+})();
+</script>
+
+<!-- Dependencies -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+<!-- App modules -->
+<script src="{{ url_for('real_admin.static', filename='ai_agent.js') }}"></script>
+<script src="{{ url_for('real_admin.static', filename='physics_world.js') }}"></script>
+
+<!-- ── 1-Click Update banner controller (V1.0.0.3) ──────────────────────── -->
+<script>
+(function () {
+  const banner   = document.getElementById('updateBanner');
+  if (!banner) return;
+  const cur      = document.getElementById('updCurrent');
+  const latest   = document.getElementById('updLatest');
+  const relLink  = document.getElementById('updReleaseLink');
+  const btn      = document.getElementById('updInstallBtn');
+  const dismiss  = document.getElementById('updDismissBtn');
+  const progress = document.getElementById('updProgress');
+  const progressText = document.getElementById('updProgressText');
+
+  const STATE_URL  = '/admin/console/api/system/update-status';
+  const UPDATE_URL = '/admin/console/api/system/update';
+  const CHECK_URL  = '/admin/console/api/system/update-check';
+  const DISMISS_KEY = 'wd_update_dismissed_for';
+
+  async function fetchStatus() {
+    try {
+      const r = await fetch(STATE_URL, { credentials: 'same-origin' });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch (_) { return null; }
+  }
+
+  function render(state) {
+    if (!state) return;
+    const dismissedFor = sessionStorage.getItem(DISMISS_KEY);
+
+    if (state.update_available && state.latest_version) {
+      cur.textContent     = state.current_version || '--';
+      latest.textContent  = state.latest_version;
+      if (state.release_url) {
+        relLink.href = state.release_url;
+        relLink.hidden = false;
+      } else {
+        relLink.hidden = true;
+      }
+      if (dismissedFor !== state.latest_version) banner.hidden = false;
+    } else {
+      banner.hidden = true;
+    }
+
+    if (state.in_progress) {
+      banner.hidden = false;
+      progress.hidden = false;
+      btn.disabled = true;
+      progressText.textContent = 'Installing ' + (state.latest_version || 'latest') + '…';
+    } else if (state.finished_at && state.started_at) {
+      progress.hidden = true;
+      btn.disabled = false;
+      if (state.exit_code === 0) {
+        progressText.textContent = 'Update applied — refreshing…';
+        setTimeout(() => location.reload(), 1500);
+      }
+    }
+  }
+
+  async function triggerUpdate() {
+    if (btn.disabled) return;
+    if (!confirm('Install ' + latest.textContent + '?\n\nThis will restart wd-engine and the API.')) return;
+    btn.disabled = true;
+    progress.hidden = false;
+    progressText.textContent = 'Contacting update service…';
+    try {
+      const r = await fetch(UPDATE_URL, { method: 'POST', credentials: 'same-origin' });
+      const s = await r.json();
+      render(s);
+      // Begin tight polling so the banner reflects live progress.
+      const poll = setInterval(async () => {
+        const ns = await fetchStatus();
+        render(ns);
+        if (ns && !ns.in_progress && ns.finished_at) clearInterval(poll);
+      }, 1500);
+    } catch (err) {
+      progressText.textContent = 'Update failed: ' + err.message;
+      btn.disabled = false;
+    }
+  }
+
+  btn.addEventListener('click', triggerUpdate);
+  dismiss.addEventListener('click', () => {
+    sessionStorage.setItem(DISMISS_KEY, latest.textContent);
+    banner.hidden = true;
+  });
+
+  // Initial render + 60 s background poll for state changes.
+  fetchStatus().then(render);
+  setInterval(() => fetchStatus().then(render), 60000);
+
+  // Listen for live Socket.IO push of update events if io is loaded.
+  if (window.io) {
+    try {
+      const sock = io('/ws/frontend', { transports: ['polling', 'websocket'] });
+      sock.on('update_available', () => fetchStatus().then(render));
+      sock.on('update_started',   () => fetchStatus().then(render));
+      sock.on('update_finished',  () => fetchStatus().then(render));
+      sock.on('update_log',       () => fetchStatus().then(render));
+    } catch (_) { /* fall back to polling */ }
+  }
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,10 @@
+__pycache__/
+.env
+src/api/honeypot_fs/
+src/api/wiredown.db*
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials

@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetGate Pro R4500 — Dashboard</title>
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #0a0e1a;
+            color: #c8d6e5;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* ── Sidebar ─────────────────────────────── */
+        .sidebar {
+            width: 240px;
+            background: #111827;
+            border-right: 1px solid #1e293b;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .sidebar-brand {
+            padding: 20px 18px;
+            border-bottom: 1px solid #1e293b;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sidebar-icon {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, #1a73e8, #0d47a1);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .sidebar-icon svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+        .sidebar-brand-text { font-size: 16px; font-weight: 700; color: #fff; }
+        .sidebar-brand-sub { font-size: 10px; color: #64748b; }
+
+        .sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; }
+
+        .nav-section { padding: 8px 18px 4px; font-size: 10px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 1px; }
+
+        .nav-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 18px; margin: 2px 8px; border-radius: 8px;
+            color: #94a3b8; font-size: 13px; font-weight: 500;
+            cursor: pointer; transition: all 0.15s; text-decoration: none;
+        }
+        .nav-item:hover { background: rgba(26, 115, 232, 0.08); color: #e2e8f0; }
+        .nav-item.active { background: rgba(26, 115, 232, 0.15); color: #60a5fa; }
+
+        .nav-item svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+        .sidebar-footer {
+            padding: 16px 18px;
+            border-top: 1px solid #1e293b;
+            font-size: 10px;
+            color: #334155;
+        }
+
+        /* ── Main Content ────────────────────────── */
+        .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+        .topbar {
+            height: 56px; background: #111827; border-bottom: 1px solid #1e293b;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 24px; flex-shrink: 0;
+        }
+
+        .topbar-title { font-size: 16px; font-weight: 600; color: #fff; }
+
+        .topbar-right { display: flex; align-items: center; gap: 16px; }
+
+        .topbar-user { font-size: 13px; color: #94a3b8; }
+        .topbar-user strong { color: #e2e8f0; }
+
+        .topbar-btn {
+            padding: 6px 14px; background: #1e293b; border: 1px solid #334155;
+            border-radius: 6px; color: #94a3b8; font-size: 12px; cursor: pointer;
+            text-decoration: none; font-family: inherit; transition: all 0.15s;
+        }
+        .topbar-btn:hover { background: #334155; color: #e2e8f0; }
+
+        .content { flex: 1; padding: 24px; overflow-y: auto; }
+
+        .page-title { font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+        .page-subtitle { font-size: 13px; color: #64748b; margin-bottom: 24px; }
+
+        /* ── Grid ────────────────────────────────── */
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+        .grid-full { margin-bottom: 24px; }
+
+        @media (max-width: 1100px) { .grid-3 { grid-template-columns: 1fr; } .grid-2 { grid-template-columns: 1fr; } }
+
+        /* ── Cards ───────────────────────────────── */
+        .card {
+            background: #111827; border: 1px solid #1e293b; border-radius: 12px;
+            padding: 20px; transition: border-color 0.2s;
+        }
+        .card:hover { border-color: #334155; }
+
+        .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+        .card-title { font-size: 14px; font-weight: 600; color: #fff; }
+        .card-badge {
+            padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+        }
+        .badge-green { background: rgba(34, 197, 94, 0.1); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.2); }
+        .badge-blue { background: rgba(59, 130, 246, 0.1); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.2); }
+
+        .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #1e293b; }
+        .stat-row:last-child { border-bottom: none; }
+        .stat-label { font-size: 12px; color: #64748b; }
+        .stat-value { font-size: 13px; color: #e2e8f0; font-weight: 500; }
+
+        /* ── Interface Cards ─────────────────────── */
+        .iface-status { display: flex; align-items: center; gap: 6px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .dot-green { background: #4ade80; box-shadow: 0 0 6px rgba(74, 222, 128, 0.5); }
+        .dot-yellow { background: #fbbf24; box-shadow: 0 0 6px rgba(251, 191, 36, 0.5); }
+
+        .iface-detail { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+        .iface-ip { font-size: 20px; font-weight: 700; color: #fff; }
+        .iface-speed { font-size: 12px; color: #64748b; }
+
+        /* ── Usage Bars ──────────────────────────── */
+        .usage-bar-container { margin-top: 8px; }
+        .usage-bar-label { display: flex; justify-content: space-between; font-size: 11px; color: #64748b; margin-bottom: 4px; }
+        .usage-bar-bg { height: 6px; background: #1e293b; border-radius: 3px; overflow: hidden; }
+        .usage-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+        .fill-blue { background: linear-gradient(90deg, #1a73e8, #60a5fa); }
+        .fill-green { background: linear-gradient(90deg, #059669, #4ade80); }
+        .fill-amber { background: linear-gradient(90deg, #d97706, #fbbf24); }
+
+        /* ── Device Table ────────────────────────── */
+        .table-wrapper { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        thead th {
+            text-align: left; padding: 10px 14px; font-size: 11px; font-weight: 600;
+            color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;
+            border-bottom: 1px solid #1e293b; background: #0d1117;
+        }
+        tbody td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid #1e293b; }
+        tbody tr:hover { background: rgba(26, 115, 232, 0.04); }
+        .mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #94a3b8; }
+        .status-online { color: #4ade80; }
+        .status-idle { color: #fbbf24; }
+
+        /* ── Traffic Chart (CSS-only) ────────────── */
+        .chart-container { display: flex; align-items: flex-end; gap: 4px; height: 120px; padding-top: 10px; }
+        .chart-bar {
+            flex: 1; border-radius: 3px 3px 0 0; position: relative;
+            transition: height 0.3s; cursor: pointer;
+            min-width: 0;
+        }
+        .chart-bar:hover { opacity: 0.8; }
+        .chart-bar .tooltip {
+            display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+            background: #1e293b; padding: 4px 8px; border-radius: 4px; font-size: 10px;
+            color: #e2e8f0; white-space: nowrap; margin-bottom: 4px;
+            pointer-events: none;
+        }
+        .chart-bar:hover .tooltip { display: block; }
+        .bar-download { background: linear-gradient(180deg, #60a5fa, #1a73e8); }
+        .bar-upload { background: linear-gradient(180deg, #4ade80, #059669); }
+
+        .chart-legend { display: flex; gap: 20px; margin-top: 12px; justify-content: center; }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #64748b; }
+        .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+        .chart-labels { display: flex; justify-content: space-between; margin-top: 6px; }
+        .chart-label-item { font-size: 9px; color: #475569; flex: 1; text-align: center; }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <div class="sidebar-icon">
+                <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            </div>
+            <div>
+                <div class="sidebar-brand-text">NetGate Pro</div>
+                <div class="sidebar-brand-sub">R4500 Management</div>
+            </div>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="nav-section">Main</div>
+            <a class="nav-item active" data-page="dashboard" href="#">
+                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                Dashboard
+            </a>
+            <a class="nav-item" data-page="network" href="#">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                Network
+            </a>
+            <a class="nav-item" data-page="firewall" href="#">
+                <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                Firewall
+            </a>
+
+            <div class="nav-section">Services</div>
+            <a class="nav-item" data-page="dhcp" href="#">
+                <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
+                DHCP
+            </a>
+            <a class="nav-item" data-page="dns" href="#">
+                <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                DNS
+            </a>
+
+            <div class="nav-section">Administration</div>
+            <a class="nav-item" data-page="system" href="#">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                System
+            </a>
+            <a class="nav-item" data-page="logs" href="#">
+                <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                Logs
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            Firmware v3.8.2<br>
+            &copy; 2024 NetGate Technologies
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="main">
+        <!-- Top Bar -->
+        <header class="topbar">
+            <div class="topbar-title">Dashboard</div>
+            <div class="topbar-right">
+                <div class="topbar-user">Logged in as <strong>{{ username }}</strong></div>
+                <a class="topbar-btn" href="/logout" id="logoutBtn">Logout</a>
+            </div>
+        </header>
+
+        <!-- Content Area: Dashboard -->
+        <div class="content" id="dashboardPage">
+            <h1 class="page-title">System Overview</h1>
+            <p class="page-subtitle">Real-time status of your NetGate Pro R4500</p>
+
+            <!-- Row 1: System Info, CPU/RAM, Uptime -->
+            <div class="grid-3">
+                <!-- System Info Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">System Information</span>
+                        <span class="card-badge badge-green">Online</span>
+                    </div>
+                    <div class="stat-row"><span class="stat-label">Model</span><span class="stat-value">NetGate Pro R4500</span></div>
+                    <div class="stat-row"><span class="stat-label">Firmware</span><span class="stat-value">v3.8.2 Build 20241015</span></div>
+                    <div class="stat-row"><span class="stat-label">Serial</span><span class="stat-value mono">NG4500-2024-A8F3E1</span></div>
+                    <div class="stat-row"><span class="stat-label">Uptime</span><span class="stat-value">47 days 12:33:07</span></div>
+                    <div class="stat-row"><span class="stat-label">Timezone</span><span class="stat-value">UTC-5 (Eastern)</span></div>
+                </div>
+
+                <!-- CPU & Memory Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Performance</span>
+                        <span class="card-badge badge-blue">Normal</span>
+                    </div>
+                    <div class="stat-row"><span class="stat-label">CPU Usage</span><span class="stat-value">23%</span></div>
+                    <div class="usage-bar-container">
+                        <div class="usage-bar-bg"><div class="usage-bar-fill fill-blue" style="width: 23%"></div></div>
+                    </div>
+                    <div class="stat-row" style="margin-top: 12px;"><span class="stat-label">Memory</span><span class="stat-value">412 MB / 1024 MB</span></div>
+                    <div class="usage-bar-container">
+                        <div class="usage-bar-bg"><div class="usage-bar-fill fill-green" style="width: 40.2%"></div></div>
+                    </div>
+                    <div class="stat-row" style="margin-top: 12px;"><span class="stat-label">Flash Storage</span><span class="stat-value">89 MB / 256 MB</span></div>
+                    <div class="usage-bar-container">
+                        <div class="usage-bar-bg"><div class="usage-bar-fill fill-amber" style="width: 34.8%"></div></div>
+                    </div>
+                </div>
+
+                <!-- Quick Stats Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Network Summary</span>
+                    </div>
+                    <div class="stat-row"><span class="stat-label">Connected Devices</span><span class="stat-value" style="color: #60a5fa; font-size: 18px; font-weight: 700;">54</span></div>
+                    <div class="stat-row"><span class="stat-label">Active Connections</span><span class="stat-value">312</span></div>
+                    <div class="stat-row"><span class="stat-label">DHCP Leases</span><span class="stat-value">48 / 150</span></div>
+                    <div class="stat-row"><span class="stat-label">Blocked Threats (24h)</span><span class="stat-value" style="color: #f87171;">17</span></div>
+                    <div class="stat-row"><span class="stat-label">VPN Clients</span><span class="stat-value">3</span></div>
+                </div>
+            </div>
+
+            <!-- Row 2: Network Interfaces -->
+            <div class="grid-3">
+                {# nosonar: intentional honeypot network configuration — all IPs are fake bait #}
+                <!-- WAN -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">WAN Interface</span>
+                        <div class="iface-status"><div class="status-dot dot-green"></div><span style="font-size:11px; color:#4ade80;">UP</span></div>
+                    </div>
+                    <div class="iface-detail">
+                        <span class="iface-ip">192.168.1.1</span>
+                        <span class="iface-speed">100 Mbps</span>
+                    </div>
+                    <div class="stat-row" style="margin-top:12px;"><span class="stat-label">Gateway</span><span class="stat-value mono">192.168.1.254</span></div>
+                    <div class="stat-row"><span class="stat-label">DNS</span><span class="stat-value mono">8.8.8.8 / 8.8.4.4</span></div>
+                    <div class="stat-row"><span class="stat-label">MAC</span><span class="stat-value mono">00:1A:2B:3C:4D:5E</span></div>
+                </div>
+
+                {# nosonar: intentional honeypot network configuration — all IPs are fake bait #}
+                <!-- LAN -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">LAN Interface</span>
+                        <div class="iface-status"><div class="status-dot dot-green"></div><span style="font-size:11px; color:#4ade80;">UP</span></div>
+                    </div>
+                    <div class="iface-detail">
+                        <span class="iface-ip">10.0.0.1</span>
+                        <span class="iface-speed">1 Gbps</span>
+                    </div>
+                    <div class="stat-row" style="margin-top:12px;"><span class="stat-label">Subnet</span><span class="stat-value mono">255.255.255.0</span></div>
+                    <div class="stat-row"><span class="stat-label">DHCP Range</span><span class="stat-value mono">10.0.0.100-250</span></div>
+                    <div class="stat-row"><span class="stat-label">MAC</span><span class="stat-value mono">00:1A:2B:3C:4D:5F</span></div>
+                </div>
+
+                <!-- WiFi -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">WiFi Interface</span>
+                        <div class="iface-status"><div class="status-dot dot-green"></div><span style="font-size:11px; color:#4ade80;">UP</span></div>
+                    </div>
+                    <div class="iface-detail">
+                        <span class="iface-ip">NetGate-Office</span>
+                        <span class="iface-speed">WiFi 6</span>
+                    </div>
+                    <div class="stat-row" style="margin-top:12px;"><span class="stat-label">Clients</span><span class="stat-value">54 connected</span></div>
+                    <div class="stat-row"><span class="stat-label">Security</span><span class="stat-value">WPA3-Personal</span></div>
+                    <div class="stat-row"><span class="stat-label">Channel</span><span class="stat-value">6 (2.4 GHz) / 36 (5 GHz)</span></div>
+                </div>
+            </div>
+
+            <!-- Row 3: Traffic Chart -->
+            <div class="grid-full">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Traffic — Last 24 Hours</span>
+                        <span class="card-badge badge-blue">Live</span>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <!-- Download bars -->
+                        <div style="flex:1;">
+                            <div style="font-size:11px; color:#64748b; margin-bottom:8px; text-align:center;">Download (Mbps)</div>
+                            <div class="chart-container" id="downloadChart"></div>
+                        </div>
+                        <!-- Upload bars -->
+                        <div style="flex:1;">
+                            <div style="font-size:11px; color:#64748b; margin-bottom:8px; text-align:center;">Upload (Mbps)</div>
+                            <div class="chart-container" id="uploadChart"></div>
+                        </div>
+                    </div>
+                    <div class="chart-labels" id="chartLabels"></div>
+                    <div class="chart-legend">
+                        <div class="legend-item"><div class="legend-dot" style="background:#3b82f6;"></div> Download</div>
+                        <div class="legend-item"><div class="legend-dot" style="background:#4ade80;"></div> Upload</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 4: Connected Devices Table -->
+            <div class="grid-full">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Connected Devices</span>
+                        <span class="card-badge badge-green">10 devices</span>
+                    </div>
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Hostname</th>
+                                    <th>MAC Address</th>
+                                    <th>IP Address</th>
+                                    <th>Connection</th>
+                                    <th>Status</th>
+                                    <th>RX / TX</th>
+                                    <th>Last Seen</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="deviceTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /content dashboard -->
+
+        <!-- Content Area: System Settings (Password Change Trap) -->
+        <div class="content" id="systemPage" style="display: none;">
+            <h1 class="page-title">System Settings</h1>
+            <p class="page-subtitle">Manage administrative access and system configuration.</p>
+            
+            <div class="grid-2">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Change Administrator Password</span>
+                    </div>
+                    <div style="margin-top: 16px;">
+                        <form id="passwordChangeForm">
+                            <div style="margin-bottom: 16px;">
+                                <label style="display: block; font-size: 12px; color: #94a3b8; margin-bottom: 6px;">New Password</label>
+                                <input type="password" id="new_password" required style="width: 100%; padding: 10px; background: #0d1117; border: 1px solid #1e293b; border-radius: 6px; color: #fff; font-size: 14px;">
+                            </div>
+                            <div style="margin-bottom: 24px;">
+                                <label style="display: block; font-size: 12px; color: #94a3b8; margin-bottom: 6px;">Confirm Password</label>
+                                <input type="password" id="confirm_password" required style="width: 100%; padding: 10px; background: #0d1117; border: 1px solid #1e293b; border-radius: 6px; color: #fff; font-size: 14px;">
+                            </div>
+                            <button type="submit" class="topbar-btn" style="background: #1a73e8; color: #fff; border-color: #1a73e8; width: 100%; font-size: 14px; padding: 10px;">Update Password</button>
+                        </form>
+                        <div id="passwordMessage" style="display: none; margin-top: 16px; padding: 12px; border-radius: 6px; font-size: 13px; text-align: center;"></div>
+                    </div>
+                </div>
+            </div>
+        </div><!-- /content system -->
+    </div><!-- /main -->
+
+    <script>
+        /* ── Trap all clicks ──────────────────────── */
+        function trapAction(action, detail) {
+            fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: action,
+                    detail: detail,
+                    page: 'dashboard',
+                    timestamp: new Date().toISOString()
+                })
+            }).catch(function() {});
+        }
+
+        /* ── Sidebar navigation trap ──────────────── */
+        document.querySelectorAll('.nav-item').forEach(function(item) {
+            item.addEventListener('click', function(e) {
+                e.preventDefault();
+                var page = this.getAttribute('data-page') || 'unknown';
+                trapAction('nav_click', page);
+
+                document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+                this.classList.add('active');
+                document.querySelector('.topbar-title').textContent = this.textContent.trim();
+                
+                // Page switching logic
+                if (page === 'system') {
+                    document.getElementById('dashboardPage').style.display = 'none';
+                    document.getElementById('systemPage').style.display = 'block';
+                } else {
+                    document.getElementById('dashboardPage').style.display = 'block';
+                    document.getElementById('systemPage').style.display = 'none';
+                }
+            });
+        });
+
+        /* ── Password Change Trap ────────────────── */
+        document.getElementById('passwordChangeForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            var newPass = document.getElementById('new_password').value;
+            var confPass = document.getElementById('confirm_password').value;
+            var msgEl = document.getElementById('passwordMessage');
+            
+            if (newPass !== confPass) {
+                msgEl.textContent = 'Passwords do not match.';
+                msgEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                msgEl.style.color = '#ef4444';
+                msgEl.style.display = 'block';
+                return;
+            }
+            
+            // Send the attempted password to backend
+            fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'password_change',
+                    password: newPass,
+                    timestamp: new Date().toISOString()
+                })
+            }).then(function() {
+                // Fake Success Message
+                msgEl.textContent = 'Configuration Updated Successfully. Please re-login to apply changes.';
+                msgEl.style.background = 'rgba(34, 197, 94, 0.1)';
+                msgEl.style.color = '#4ade80';
+                msgEl.style.display = 'block';
+                
+                // Trigger final shutdown sequence
+                setTimeout(function() {
+                    window.location.href = '/apply_config';
+                }, 2000);
+            }).catch(function() {});
+        });
+
+        /* ── Logout trap ─────────────────────────── */
+        document.getElementById('logoutBtn').addEventListener('click', function(e) {
+            trapAction('logout', 'user_logout');
+        });
+
+        /* ── Traffic Chart Data ──────────────────── */
+        var downloadData = [42, 38, 25, 18, 12, 8, 6, 5, 15, 28, 45, 62, 78, 85, 72, 68, 55, 48, 65, 82, 75, 58, 45, 38];
+        var uploadData = [12, 10, 8, 5, 3, 2, 2, 1, 5, 9, 15, 22, 28, 32, 25, 20, 18, 15, 22, 30, 26, 18, 14, 11];
+        var maxDown = Math.max.apply(null, downloadData);
+        var maxUp = Math.max.apply(null, uploadData);
+
+        var dlContainer = document.getElementById('downloadChart');
+        var ulContainer = document.getElementById('uploadChart');
+        var labelsContainer = document.getElementById('chartLabels');
+
+        for (var i = 0; i < 24; i++) {
+            var hour = (new Date().getHours() - 23 + i + 24) % 24;
+            var hourStr = (hour < 10 ? '0' : '') + hour + ':00';
+
+            var dlBar = document.createElement('div');
+            dlBar.className = 'chart-bar bar-download';
+            dlBar.style.height = (downloadData[i] / maxDown * 100) + '%';
+            dlBar.innerHTML = '<div class="tooltip">' + hourStr + ': ' + downloadData[i] + ' Mbps</div>';
+            dlBar.addEventListener('click', (function(h, v) {
+                return function() { trapAction('chart_click', 'download_' + h + '_' + v + 'Mbps'); };
+            })(hourStr, downloadData[i]));
+            dlContainer.appendChild(dlBar);
+
+            var ulBar = document.createElement('div');
+            ulBar.className = 'chart-bar bar-upload';
+            ulBar.style.height = (uploadData[i] / maxUp * 100) + '%';
+            ulBar.innerHTML = '<div class="tooltip">' + hourStr + ': ' + uploadData[i] + ' Mbps</div>';
+            ulBar.addEventListener('click', (function(h, v) {
+                return function() { trapAction('chart_click', 'upload_' + h + '_' + v + 'Mbps'); };
+            })(hourStr, uploadData[i]));
+            ulContainer.appendChild(ulBar);
+
+            if (i % 4 === 0 || i === 23) {
+                var lbl = document.createElement('span');
+                lbl.className = 'chart-label-item';
+                lbl.textContent = hourStr;
+                labelsContainer.appendChild(lbl);
+            }
+        }
+
+        /* ── Device Table ────────────────────────── */
+        /* nosonar: intentional honeypot network configuration — all IPs are fake bait */
+        var devices = [
+            { id: 1, hostname: 'DESKTOP-A1B2C3D', mac: 'A4:83:E7:2F:01:AA', ip: '10.0.0.101', type: 'Ethernet', status: 'online', rx: '1.2 GB', tx: '340 MB', last: '2 min ago' },
+            { id: 2, hostname: 'iPhone-Sarah', mac: 'F0:18:98:4C:D2:BB', ip: '10.0.0.102', type: 'WiFi (5GHz)', status: 'online', rx: '890 MB', tx: '120 MB', last: 'Just now' },
+            { id: 3, hostname: 'NAS-Synology', mac: '00:11:32:8A:F5:CC', ip: '10.0.0.10', type: 'Ethernet', status: 'online', rx: '45.6 GB', tx: '12.3 GB', last: '1 min ago' },
+            { id: 4, hostname: 'Galaxy-S24-Mike', mac: 'B4:F1:DA:77:E3:DD', ip: '10.0.0.103', type: 'WiFi (2.4GHz)', status: 'online', rx: '450 MB', tx: '89 MB', last: '5 min ago' },
+            { id: 5, hostname: 'PRINTER-HP-4520', mac: '3C:D9:2B:11:44:EE', ip: '10.0.0.200', type: 'WiFi (2.4GHz)', status: 'online', rx: '23 MB', tx: '156 MB', last: '12 min ago' },
+            { id: 6, hostname: 'Roku-LivingRoom', mac: 'D8:31:34:5A:22:FF', ip: '10.0.0.104', type: 'WiFi (5GHz)', status: 'online', rx: '8.9 GB', tx: '45 MB', last: 'Just now' },
+            { id: 7, hostname: 'IoT-Gateway-01', mac: '24:6F:28:AB:CD:11', ip: '10.0.0.205', type: 'WiFi (2.4GHz)', status: 'online', rx: '12 MB', tx: '8 MB', last: '30 sec ago' },
+            { id: 8, hostname: 'MacBook-Pro-Admin', mac: 'A8:66:7F:C9:88:22', ip: '10.0.0.100', type: 'WiFi (5GHz)', status: 'online', rx: '3.4 GB', tx: '1.1 GB', last: '3 min ago' },
+            { id: 9, hostname: 'Ring-Doorbell', mac: '5C:A6:E6:33:DD:33', ip: '10.0.0.206', type: 'WiFi (2.4GHz)', status: 'idle', rx: '670 MB', tx: '2.1 GB', last: '1 hour ago' },
+            { id: 10, hostname: 'unknown-device', mac: 'DE:AD:BE:EF:CA:FE', ip: '10.0.0.199', type: 'WiFi (2.4GHz)', status: 'online', rx: '2.3 GB', tx: '4.5 GB', last: '8 min ago' }
+        ];
+
+        var tbody = document.getElementById('deviceTableBody');
+        devices.forEach(function(d) {
+            var statusClass = d.status === 'online' ? 'status-online' : 'status-idle';
+            var statusIcon = d.status === 'online' ? '●' : '◐';
+            var row = document.createElement('tr');
+            row.innerHTML =
+                '<td>' + d.id + '</td>' +
+                '<td style="color:#e2e8f0; font-weight:500;">' + d.hostname + '</td>' +
+                '<td class="mono">' + d.mac + '</td>' +
+                '<td class="mono">' + d.ip + '</td>' +
+                '<td>' + d.type + '</td>' +
+                '<td class="' + statusClass + '">' + statusIcon + ' ' + d.status + '</td>' +
+                '<td style="font-size:12px;">' + d.rx + ' / ' + d.tx + '</td>' +
+                '<td style="font-size:12px; color:#64748b;">' + d.last + '</td>' +
+                '<td><button class="topbar-btn device-action-btn" data-mac="' + d.mac + '" data-hostname="' + d.hostname + '">Block</button></td>';
+            tbody.appendChild(row);
+        });
+
+        /* ── Trap device action buttons ──────────── */
+        document.querySelectorAll('.device-action-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var mac = this.getAttribute('data-mac');
+                var hostname = this.getAttribute('data-hostname');
+                trapAction('block_device', mac + ' (' + hostname + ')');
+                this.textContent = 'Blocked';
+                this.style.background = 'rgba(239,68,68,0.15)';
+                this.style.borderColor = 'rgba(239,68,68,0.3)';
+                this.style.color = '#f87171';
+                this.disabled = true;
+            });
+        });
+
+        /* ── Card clicks trap ────────────────────── */
+        document.querySelectorAll('.card').forEach(function(card) {
+            card.addEventListener('click', function(e) {
+                if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.chart-bar')) return;
+                var title = card.querySelector('.card-title');
+                if (title) {
+                    trapAction('card_click', title.textContent);
+                }
+            });
+        });
+    </script>
+</body>
+</html>

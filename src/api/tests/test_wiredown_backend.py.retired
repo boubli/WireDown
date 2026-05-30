@@ -1,0 +1,258 @@
+"""
+WireDown backend regression test suite.
+
+Covers:
+- Service banner (/api/ping)
+- NetGate Pro R4500 honeypot (/api/wd/, /api/wd/login)
+- Red-screen warning page
+- Hidden SOC operator admin console (/api/wd/admin/console/*)
+- Brute-force lockout (5 fails / 15 min)
+- SQLite + bcrypt seed
+- Architecture proposal doc presence
+
+NOTE on routing: platform ingress only forwards /api/* to backend (8001).
+Flask app uses a tiny WSGI middleware in server.py to strip `/api/wd`
+prefix so its native routes still mount at `/`, `/admin/console/*`, etc.
+The /api/ping route is a native Flask route (no /api/wd needed).
+"""
+import os
+import sqlite3
+import time
+import uuid
+
+import pytest
+import requests
+
+BASE_URL = "http://localhost:8001"
+WD = f"{BASE_URL}/api/wd"
+
+ADMIN_USER = "admin"
+ADMIN_PASS = "WireDown@2026"
+
+DB_PATH = "/app/backend/wiredown.db"
+ARCH_DOC = "/app/docs/WIREDOWN_ARCHITECTURE_PROPOSAL.md"
+
+
+# ---------- fixtures ----------
+
+@pytest.fixture(scope="session", autouse=True)
+def _reset_login_attempts():
+    """Clear the brute-force counter once before the suite so prior
+    test runs / manual probes don't poison the success-path tests."""
+    try:
+        c = sqlite3.connect(DB_PATH)
+        c.execute("DELETE FROM login_attempts")
+        c.commit()
+        c.close()
+    except Exception as e:
+        print(f"[warn] could not reset login_attempts: {e}")
+    yield
+
+
+@pytest.fixture
+def client():
+    s = requests.Session()
+    s.headers.update({"User-Agent": "wd-pytest/1.0"})
+    return s
+
+
+@pytest.fixture
+def auth_client(client):
+    """Session that has performed a successful SOC operator login."""
+    r = client.post(
+        f"{WD}/admin/console/login",
+        data={"username": ADMIN_USER, "password": ADMIN_PASS},
+        allow_redirects=False,
+    )
+    if r.status_code == 429:
+        pytest.skip("IP locked out from prior test runs (HTTP 429).")
+    assert r.status_code in (302, 303), f"expected redirect after login, got {r.status_code}"
+    return client
+
+
+# ---------- Service banner ----------
+
+class TestServiceBanner:
+    def test_ping_returns_banner(self, client):
+        r = client.get(f"{BASE_URL}/api/ping")
+        assert r.status_code == 200
+        data = r.json()
+        assert data.get("service") == "WireDown Backend"
+        assert "version" in data
+        assert "endpoints" in data
+
+
+# ---------- NetGate honeypot ----------
+
+class TestHoneypot:
+    def test_honeypot_login_page(self, client):
+        r = client.get(f"{WD}/")
+        assert r.status_code == 200
+        body = r.text
+        # Pixel-accurate NetGate Pro R4500 page should contain product branding
+        assert ("NetGate" in body) or ("R4500" in body), "honeypot missing NetGate/R4500 branding"
+
+    def test_honeypot_captures_creds_and_serves_redscreen(self, client):
+        r = client.post(
+            f"{WD}/login",
+            data={"username": "bait_user", "password": "bait_pass"},
+            allow_redirects=True,
+        )
+        assert r.status_code == 200
+        assert "SECURITY VIOLATION" in r.text.upper() or "SECURITY VIOLATION" in r.text
+
+    def test_warning_page_direct(self, client):
+        r = client.get(f"{WD}/warning")
+        assert r.status_code == 200
+        assert "SECURITY VIOLATION" in r.text.upper() or "SECURITY VIOLATION" in r.text
+
+
+# ---------- SOC operator login page ----------
+
+class TestAdminLoginPage:
+    def test_login_page_renders(self, client):
+        r = client.get(f"{WD}/admin/console/login")
+        assert r.status_code == 200
+        # SOC operator login UI
+        body_lc = r.text.lower()
+        assert ("wiredown" in body_lc) or ("soc" in body_lc) or ("operator" in body_lc) \
+            or ("login" in body_lc)
+
+
+# ---------- Auth happy path ----------
+
+class TestAuth:
+    def test_login_success_sets_session_cookie(self, client):
+        r = client.post(
+            f"{WD}/admin/console/login",
+            data={"username": ADMIN_USER, "password": ADMIN_PASS},
+            allow_redirects=False,
+        )
+        if r.status_code == 429:
+            pytest.skip("IP locked out from prior runs (HTTP 429) — pre-existing failed attempts.")
+        assert r.status_code in (302, 303), f"expected 302/303 redirect, got {r.status_code}"
+        # Flask sets the session cookie on login
+        assert any(c.name == "session" for c in client.cookies), "session cookie not set"
+
+    def test_login_wrong_password_returns_401(self):
+        # Use isolated session to avoid polluting the cookie state of other tests.
+        s = requests.Session()
+        r = s.post(
+            f"{WD}/admin/console/login",
+            data={"username": ADMIN_USER, "password": "definitely-wrong"},
+            allow_redirects=False,
+        )
+        # If we're already locked out, accept 429; spec says 401 on bad creds.
+        assert r.status_code in (401, 429), f"expected 401 (or 429 if locked), got {r.status_code}"
+
+
+# ---------- Authenticated endpoints ----------
+
+class TestAuthenticatedEndpoints:
+    def test_dashboard(self, auth_client):
+        r = auth_client.get(f"{WD}/admin/console/dashboard")
+        assert r.status_code == 200
+        body = r.text
+        # Dashboard should contain operator-facing UI hints
+        assert ("Devices" in body) or ("NavBar" in body) or ("Dashboard" in body) \
+            or ("device" in body.lower())
+
+    def test_whoami(self, auth_client):
+        r = auth_client.get(f"{WD}/admin/console/api/whoami")
+        assert r.status_code == 200
+        data = r.json()
+        # Could be {"user": {...}} or flat
+        username = data.get("username") or (data.get("user") or {}).get("username")
+        assert username == ADMIN_USER, f"whoami did not return admin, got {data}"
+
+    def test_devices_list(self, auth_client):
+        r = auth_client.get(f"{WD}/admin/console/api/devices")
+        assert r.status_code == 200
+        data = r.json()
+        # accept either bare list or {"devices": [...]}
+        devices = data if isinstance(data, list) else data.get("devices", [])
+        assert isinstance(devices, list)
+        assert len(devices) >= 6, f"expected >=6 seeded devices, got {len(devices)}"
+        # Spot-check expected vendors are present in the seed
+        vendors = " ".join(
+            str(d.get("vendor", "")) + " " + str(d.get("manufacturer", ""))
+            for d in devices
+        )
+        expected_any = ["Intel", "Apple", "Synology", "Samsung", "Espressif", "Unknown"]
+        hits = [v for v in expected_any if v in vendors]
+        assert len(hits) >= 4, f"expected most seeded vendors visible, hits={hits}"
+
+    def test_stats(self, auth_client):
+        r = auth_client.get(f"{WD}/admin/console/api/stats")
+        assert r.status_code == 200
+        data = r.json()
+        assert data.get("preview_mode") is True, f"preview_mode should be true, got {data.get('preview_mode')}"
+        assert data.get("devices_seen", 0) >= 6, f"devices_seen >=6, got {data.get('devices_seen')}"
+        assert data.get("uptime_seconds", 0) > 0
+
+
+class TestUnauthenticated:
+    def test_devices_without_cookie_is_401(self):
+        s = requests.Session()  # no auth
+        r = s.get(f"{WD}/admin/console/api/devices")
+        assert r.status_code == 401, f"expected 401 without cookie, got {r.status_code}"
+
+
+# ---------- Brute force lockout ----------
+
+class TestBruteForce:
+    def test_lockout_after_5_failures(self):
+        """Reset the counter first, then issue 5 bad logins; the 6th must
+        be HTTP 429."""
+        # Hard reset before this test specifically.
+        try:
+            c = sqlite3.connect(DB_PATH)
+            c.execute("DELETE FROM login_attempts")
+            c.commit()
+            c.close()
+        except Exception as e:
+            pytest.skip(f"cannot reset DB: {e}")
+
+        s = requests.Session()
+        bad_user = f"bruteforce_{uuid.uuid4().hex[:6]}"
+        for i in range(5):
+            r = s.post(
+                f"{WD}/admin/console/login",
+                data={"username": bad_user, "password": "wrong"},
+                allow_redirects=False,
+            )
+            assert r.status_code in (401, 429), \
+                f"attempt {i+1}: expected 401/429, got {r.status_code}"
+        r6 = s.post(
+            f"{WD}/admin/console/login",
+            data={"username": bad_user, "password": "wrong"},
+            allow_redirects=False,
+        )
+        assert r6.status_code == 429, f"6th attempt should be 429, got {r6.status_code}"
+
+
+# ---------- Storage & artifact checks ----------
+
+class TestSqliteSeed:
+    def test_db_file_exists(self):
+        assert os.path.exists(DB_PATH), f"SQLite db missing at {DB_PATH}"
+        assert os.path.getsize(DB_PATH) > 0
+
+    def test_users_table_has_admin_with_bcrypt_hash(self):
+        c = sqlite3.connect(DB_PATH)
+        try:
+            rows = c.execute("SELECT username, password_hash FROM users").fetchall()
+        finally:
+            c.close()
+        assert rows, "users table empty"
+        admins = [r for r in rows if r[0] == ADMIN_USER]
+        assert admins, "no 'admin' user row found"
+        assert admins[0][1].startswith("$2b$"), \
+            f"admin password_hash is not bcrypt: {admins[0][1][:10]}..."
+
+
+class TestArchitectureDoc:
+    def test_architecture_proposal_exists_and_nonempty(self):
+        assert os.path.exists(ARCH_DOC), f"missing {ARCH_DOC}"
+        size = os.path.getsize(ARCH_DOC)
+        assert size > 2000, f"architecture proposal too small ({size} bytes)"

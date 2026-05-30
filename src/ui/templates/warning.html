@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>⚠ SECURITY VIOLATION DETECTED ⚠</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700&display=swap');
+
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+  :root {
+    --red:    #ff1a1a;
+    --dark:   #0a0000;
+    --glow:   #ff3333;
+    --amber:  #ffaa00;
+    --green:  #00ff88;
+  }
+
+  html, body {
+    width:100%; height:100%; overflow:hidden;
+    background: var(--dark);
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--red);
+    cursor: none;
+  }
+
+  /* ── Animated scanline overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(255,0,0,0.03) 2px,
+      rgba(255,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+    animation: scanMove 8s linear infinite;
+  }
+  @keyframes scanMove {
+    0%   { background-position: 0 0; }
+    100% { background-position: 0 200px; }
+  }
+
+  /* ── Screen flash ── */
+  .flash-overlay {
+    position: fixed; inset: 0;
+    background: var(--red);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 9998;
+  }
+  .flash-overlay.active {
+    animation: flashBang 0.3s ease-out;
+  }
+  @keyframes flashBang {
+    0%   { opacity: 0.6; }
+    100% { opacity: 0;   }
+  }
+
+  /* ── Container ── */
+  .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    padding: 2rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── Warning icon ── */
+  .warning-icon {
+    font-size: 6rem;
+    animation: pulseGlow 1s ease-in-out infinite alternate;
+    margin-bottom: 0.5rem;
+    filter: drop-shadow(0 0 40px var(--glow));
+  }
+  @keyframes pulseGlow {
+    0%   { opacity: 0.6; transform: scale(0.95); }
+    100% { opacity: 1;   transform: scale(1.05); }
+  }
+
+  .title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(1.5rem, 4vw, 3rem);
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    text-shadow: 0 0 30px var(--glow), 0 0 60px rgba(255,0,0,0.4);
+    margin-bottom: 1rem;
+    animation: textPulse 2s ease-in-out infinite;
+  }
+  @keyframes textPulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.7; }
+  }
+
+  .subtitle {
+    font-size: 1rem;
+    color: var(--amber);
+    text-align: center;
+    margin-bottom: 2rem;
+    opacity: 0.9;
+  }
+
+  /* ── Radar ── */
+  .radar {
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    position: relative;
+    margin-bottom: 2rem;
+    border: 1px solid rgba(255, 0, 0, 0.35);
+    box-shadow: 0 0 28px var(--glow), inset 0 0 18px rgba(255, 0, 0, 0.4);
+    background: radial-gradient(circle at center, rgba(255, 0, 0, 0.2) 0%, rgba(255, 0, 0, 0.04) 60%, transparent 70%);
+    overflow: hidden;
+  }
+  .radar::before {
+    content: "";
+    position: absolute;
+    inset: 8px;
+    border-radius: 50%;
+    border: 1px dashed rgba(255, 0, 0, 0.25);
+  }
+  .radar::after {
+    content: "";
+    position: absolute;
+    inset: -20%;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, rgba(255, 0, 0, 0.55), rgba(255, 0, 0, 0) 60%);
+    animation: radarSweep 2.8s linear infinite;
+    mix-blend-mode: screen;
+  }
+  .radar .line {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(255, 0, 0, 0.2);
+  }
+  .radar .line.vertical {
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    height: auto;
+  }
+  @keyframes radarSweep {
+    to { transform: rotate(360deg); }
+  }
+
+  /* ── Countdown ── */
+  .countdown-container {
+    position: relative;
+    margin-bottom: 2rem;
+  }
+  .countdown {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(5rem, 14vw, 12rem);
+    font-weight: 700;
+    color: var(--red);
+    text-shadow: 0 0 80px var(--glow), 0 0 120px rgba(255,0,0,0.5);
+    animation: countPulse 1s ease-in-out infinite;
+    line-height: 1;
+  }
+  @keyframes countPulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.03); }
+  }
+  .countdown-label {
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--amber);
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    margin-top: 0.5rem;
+  }
+
+  /* ── Diagnostics panel ── */
+  .diagnostics {
+    background: rgba(255,0,0,0.05);
+    border: 1px solid rgba(255,0,0,0.3);
+    border-radius: 4px;
+    padding: 1.2rem 1.8rem;
+    width: min(90vw, 650px);
+    max-height: 260px;
+    overflow-y: auto;
+    font-size: 0.82rem;
+    line-height: 1.7;
+    color: var(--green);
+    text-shadow: 0 0 6px rgba(0,255,136,0.3);
+  }
+  .diagnostics .line {
+    opacity: 0;
+    animation: typeIn 0.3s ease forwards;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  @keyframes typeIn {
+    0%   { opacity: 0; transform: translateX(-10px); }
+    100% { opacity: 1; transform: translateX(0);     }
+  }
+  .diagnostics .line .label {
+    color: var(--amber);
+  }
+  .diagnostics .line .danger {
+    color: var(--red);
+    font-weight: bold;
+  }
+
+  /* ── Bottom bar ── */
+  .bottom-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    padding: 0.8rem;
+    text-align: center;
+    font-size: 0.7rem;
+    color: rgba(255,26,26,0.5);
+    letter-spacing: 0.2em;
+    border-top: 1px solid rgba(255,0,0,0.15);
+    background: rgba(10,0,0,0.8);
+  }
+
+  /* ── Vignette ── */
+  .vignette {
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.7) 100%);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* scrollbar */
+  .diagnostics::-webkit-scrollbar { width: 4px; }
+  .diagnostics::-webkit-scrollbar-track { background: transparent; }
+  .diagnostics::-webkit-scrollbar-thumb { background: var(--red); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div class="flash-overlay" id="flashOverlay"></div>
+<div class="vignette"></div>
+
+<div class="container">
+  <div class="warning-icon">⚠</div>
+  <div class="title">Security Violation Detected</div>
+  <div class="subtitle" style="color: var(--red); font-weight: bold; text-shadow: 0 0 10px var(--glow); text-transform: uppercase;">WARNING: UNAUTHORIZED ACCESS DETECTED. YOUR IP {{ ip_address }} HAS BEEN LOGGED BY WIREDOWN SENSOR. COUNTER-MEASURES DEPLOYED.</div>
+
+  <div class="radar" aria-hidden="true">
+    <span class="line"></span>
+    <span class="line vertical"></span>
+  </div>
+
+  <div class="countdown-container">
+    <div class="countdown" id="countdown">60</div>
+    <div class="countdown-label">Seconds Until Full Network Isolation</div>
+  </div>
+
+  <div class="diagnostics" id="diagnostics"></div>
+</div>
+
+<div class="bottom-bar">
+  WireDown Threat Response System v4.2.1  ·  Incident ID: <span id="incidentId"></span>  ·  All activity is being recorded
+</div>
+
+<script>
+(function() {
+  "use strict";
+
+  /* ── Audio: alarm tone via Web Audio API ── */
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  let audioCtx, alarmInterval;
+
+  function startAlarm() {
+    try {
+      audioCtx = new AudioCtx();
+      let toggle = false;
+      alarmInterval = setInterval(() => {
+        const osc  = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "square";
+        osc.frequency.value = toggle ? 880 : 660;
+        gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.4);
+        toggle = !toggle;
+      }, 500);
+    } catch(e) { /* AudioContext blocked — silent fallback */ }
+  }
+
+  /* Start on first interaction (autoplay policy) */
+  let alarmStarted = false;
+  function tryAlarm() {
+    if (alarmStarted) return;
+    alarmStarted = true;
+    startAlarm();
+  }
+  document.addEventListener("click", tryAlarm, { once: false });
+  document.addEventListener("keydown", tryAlarm, { once: false });
+  document.addEventListener("mousemove", tryAlarm, { once: true });
+  setTimeout(tryAlarm, 1500);
+
+  /* ── Countdown ── */
+  const countdownEl = document.getElementById("countdown");
+  let seconds = 60;
+  const countdownTimer = setInterval(() => {
+    seconds--;
+    if (seconds <= 0) {
+      clearInterval(countdownTimer);
+      countdownEl.textContent = "00";
+      addDiagLine("NETWORK ISOLATION COMPLETE.", "danger");
+      addDiagLine("All device fingerprints transmitted to SOC.", "danger");
+      document.title = "🔒 ISOLATED — WireDown";
+    } else {
+      countdownEl.textContent = String(seconds).padStart(2, "0");
+    }
+    flashScreen();
+  }, 1000);
+
+  /* ── Flash effect ── */
+  const flashEl = document.getElementById("flashOverlay");
+  function flashScreen() {
+    flashEl.classList.remove("active");
+    void flashEl.offsetWidth;
+    flashEl.classList.add("active");
+  }
+
+  /* ── Random hex / fingerprint generators ── */
+  function randHex(len) {
+    let s = "";
+    for (let i = 0; i < len; i++) s += Math.floor(Math.random()*16).toString(16);
+    return s.toUpperCase();
+  }
+  function randIP() {
+    return [10, Math.floor(Math.random()*255), Math.floor(Math.random()*255), Math.floor(Math.random()*255)].join(".");
+  }
+  function randPort() {
+    return 1024 + Math.floor(Math.random() * 64000);
+  }
+
+  /* ── Incident ID ── */
+  document.getElementById("incidentId").textContent =
+    "INC-" + Date.now().toString(36).toUpperCase() + "-" + randHex(6);
+
+  /* ── Diagnostics feed ── */
+  const diagEl = document.getElementById("diagnostics");
+  let lineIndex = 0;
+
+  function addDiagLine(text, cls) {
+    const div = document.createElement("div");
+    div.className = "line";
+    div.style.animationDelay = "0s";
+    if (cls === "danger") {
+      div.innerHTML = '<span class="danger">▸ ' + text + '</span>';
+    } else {
+      div.innerHTML = '<span class="label">▸ </span>' + text;
+    }
+    diagEl.appendChild(div);
+    diagEl.scrollTop = diagEl.scrollHeight;
+  }
+
+  const userAgent = {{ user_agent | tojson }};
+  const clientIP  = {{ ip_address | tojson }};
+
+  const scriptedLines = [
+    "Initializing threat analysis engine...",
+    "Scanning local network topology...",
+    "Client IP detected: " + clientIP,
+    '<span class="danger">Unauthorized device fingerprint captured</span>',
+    "User-Agent: " + userAgent,
+    "TLS session token: 0x" + randHex(32),
+    "Device hardware hash: SHA-256:" + randHex(64),
+    "MAC OUI lookup: MATCHED — flagged vendor",
+    "Reverse DNS: " + clientIP + " → unknown.honeypot.local",
+    "Open ports discovered: " + randPort() + ", " + randPort() + ", " + randPort(),
+    "ARP table poisoning check: POSITIVE",
+    '<span class="danger">THREAT LEVEL: CRITICAL</span>',
+    "Logging all HTTP headers to incident database...",
+    "Browser canvas fingerprint: 0x" + randHex(16),
+    "WebGL renderer hash: 0x" + randHex(12),
+    "Timezone offset: UTC" + (new Date().getTimezoneOffset() > 0 ? "-" : "+") + Math.abs(new Date().getTimezoneOffset()/60),
+    "Screen resolution: " + screen.width + "×" + screen.height + " (" + devicePixelRatio + "x)",
+    "Installed plugins: " + navigator.plugins.length + " detected",
+    "CPU cores: " + (navigator.hardwareConcurrency || "N/A"),
+    "Platform: " + navigator.platform,
+    "Language: " + navigator.language,
+    "Connection type: " + (navigator.connection ? navigator.connection.effectiveType : "unknown"),
+    "Persistent cookie planted: wdtrk_" + randHex(8),
+    '<span class="danger">Device Fingerprint Logged. Network isolation imminent.</span>',
+    "Forwarding incident data to upstream SOC...",
+    "Initiating Layer-2 deauthentication sequence...",
+    "Blackhole route injected for " + clientIP,
+    "All egress traffic from this device is now captured.",
+  ];
+
+  function nextLine() {
+    if (lineIndex < scriptedLines.length) {
+      addDiagLine(scriptedLines[lineIndex]);
+      lineIndex++;
+    } else {
+      const dynamicLines = [
+        "Packet captured: " + randIP() + ":" + randPort() + " → " + randIP() + ":" + randPort() + " [" + randHex(8) + "]",
+        "DNS query intercepted: " + ["evil.com","c2.attacker.net","data-exfil.io","beacon.malware.xyz"][Math.floor(Math.random()*4)],
+        "Certificate pinning bypass attempt detected",
+        "Keylogger injection vector analyzed — 0x" + randHex(16),
+        "Firewall rule updated: DROP " + randIP(),
+        "Deep packet inspection: anomalous payload (" + Math.floor(Math.random()*2000) + " bytes)",
+        "Behavioral score: " + (70 + Math.floor(Math.random()*30)) + "/100 — HIGH RISK",
+      ];
+      addDiagLine(dynamicLines[Math.floor(Math.random() * dynamicLines.length)]);
+    }
+  }
+
+  /* Print lines at irregular intervals for realism */
+  function scheduleNext() {
+    const delay = 400 + Math.random() * 1200;
+    setTimeout(() => {
+      nextLine();
+      scheduleNext();
+    }, delay);
+  }
+  scheduleNext();
+
+  /* ── Prevent easy escape ── */
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey && e.key === "w") || e.key === "Escape") {
+      e.preventDefault();
+      addDiagLine("Escape attempt logged.", "danger");
+    }
+  });
+
+  window.addEventListener("beforeunload", (e) => {
+    e.preventDefault();
+    e.returnValue = "⚠ Closing this window has been reported to the security operations center.";
+    return e.returnValue;
+  });
+
+  /* Disable right-click */
+  document.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    addDiagLine("Context menu access attempt logged.", "danger");
+  });
+})();
+</script>
+</body>
+</html>
