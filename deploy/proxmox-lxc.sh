@@ -12,8 +12,20 @@
 # ============================================================================
 set -euo pipefail
 
+echo -e "\033[1;36m"
+cat << "EOF"
+ _       ___          ____                      
+| |     / (_)_______ / __ \____ _      ______  
+| | /| / / / ___/ _ \/ / / / __ \ | /| / / __ \ 
+| |/ |/ / / /  /  __/ /_/ / /_/ / |/ |/ / / / / 
+|__/|__/_/_/   \___/_____/\____/|__/|__/_/ /_/  
+EOF
+echo -e "   Ultra-Lightweight Security Appliance"
+echo -e "\033[0m"
+echo "Starting automated Proxmox LXC deployment..."
+
 # ── Configuration (override via env) ────────────────────────────────────────
-CTID="${CTID:-200}"
+CTID="${CTID:-$(pvesh get /cluster/nextid 2>/dev/null || echo "200")}"
 HOSTNAME="${HOSTNAME:-Wiredown}"
 STORAGE="${STORAGE:-local-lvm}"
 TEMPLATE_STORAGE="${TEMPLATE_STORAGE:-local}"
